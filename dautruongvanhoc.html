@@ -910,41 +910,70 @@
             startScreen.classList.add('hidden');
             matchmakingScreen.classList.remove('hidden');
             
-            // Tạo phòng chờ
-            db.collection('matchmaking').add({
-                userId: currentUser.uid,
-                points: userPointsValue,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            }).then((docRef) => {
-                const matchmakingId = docRef.id;
-                
-                // Lắng nghe tìm đối thủ
-                matchListener = db.collection('matches')
-                    .where('players', 'array-contains', currentUser.uid)
-                    .where('status', '==', 'pending')
-                    .onSnapshot((snapshot) => {
+            // Thay thế hàm findMatch bằng code này
+            async function findMatch() {
+                if (!currentUser) {
+                    alert("Vui lòng đăng nhập để thi đấu");
+                    return;
+                }
+
+                startScreen.classList.add('hidden');
+                matchmakingScreen.classList.remove('hidden');
+            
+                // Thêm vào hàng đợi matchmaking
+                const matchmakingRef = await db.collection('matchmaking').add({
+                    userId: currentUser.uid,
+                    points: userPointsValue,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    status: 'waiting'
+                });
+
+                // Lắng nghe đối thủ phù hợp
+                const unsubscribe = db.collection('matchmaking')
+                    .where('userId', '!=', currentUser.uid)
+                    .where('status', '==', 'waiting')
+                    .orderBy('timestamp')
+                    .limit(1)
+                    .onSnapshot(async (snapshot) => {
                         if (!snapshot.empty) {
-                            snapshot.forEach((doc) => {
-                                currentMatch = doc.data();
-                                currentMatch.id = doc.id;
-                                
-                                // Hiển thị thông tin đối thủ
-                                displayOpponentInfo();
-                                
-                                // Chuyển sang màn hình đã tìm thấy đối thủ
-                                matchmakingScreen.classList.add('hidden');
-                                opponentFoundScreen.classList.remove('hidden');
-                                
-                                // Dừng lắng nghe
-                                if (matchListener) matchListener();
+                            const opponentDoc = snapshot.docs[0];
+                            const opponentData = opponentDoc.data();
+
+                            // Tạo trận đấu mới
+                            const matchRef = await db.collection('matches').add({
+                                players: [currentUser.uid, opponentData.userId],
+                                status: 'pending',
+                                timestamp: firebase.firestore.FieldValue.serverTimestamp()
                             });
+
+                            // Cập nhật trạng thái cả hai người chơi
+                            const batch = db.batch();
+                            batch.update(matchmakingRef, { status: 'matched', matchId: matchRef.id });
+                            batch.update(opponentDoc.ref, { status: 'matched', matchId: matchRef.id });
+                            await batch.commit();
+
+                            // Lưu thông tin trận đấu
+                            currentMatch = {
+                                id: matchRef.id,
+                                players: [currentUser.uid, opponentData.userId],
+                                status: 'pending'
+                            };
+
+                            // Hiển thị thông tin đối thủ
+                            displayOpponentInfo(opponentData.userId);
+                            matchmakingScreen.classList.add('hidden');
+                            opponentFoundScreen.classList.remove('hidden');
+
+                            // Dừng lắng nghe
+                            unsubscribe();
                         }
                     });
-                
+
                 // Hủy tìm kiếm sau 60s nếu không tìm thấy
                 setTimeout(() => {
                     if (!currentMatch) {
-                        cancelMatchmaking(matchmakingId);
+                        unsubscribe();
+                        cancelMatchmaking(matchmakingRef);
                     }
                 }, 60000);
             });
