@@ -230,7 +230,7 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             cursor: pointer;
             transition: all 0.3s ease;
-            z-index: 100;
+            z-thithu: 100;
         }
         
         .floating-action-btn:hover {
@@ -867,8 +867,8 @@
             const text = response.text();
             
             // Tìm và trích xuất JSON từ phản hồi
-            const jsonStart = text.indexOf('{');
-            const jsonEnd = text.lastIndexOf('}') + 1;
+            const jsonStart = text.thithuOf('{');
+            const jsonEnd = text.lastthithuOf('}') + 1;
             const jsonString = text.substring(jsonStart, jsonEnd);
             
             return JSON.parse(jsonString);
@@ -882,7 +882,7 @@
             const questionsContainer = document.getElementById('reading-questions');
             questionsContainer.innerHTML = '';
             
-            data.reading.questions.forEach((question, index) => {
+            data.reading.questions.forEach((question, thithu) => {
                 const questionElement = document.createElement('div');
                 questionElement.className = 'question-card p-5';
                 questionElement.innerHTML = `
@@ -1030,8 +1030,8 @@
             const text = response.text();
             
             // Tìm và trích xuất JSON từ phản hồi
-            const jsonStart = text.indexOf('{');
-            const jsonEnd = text.lastIndexOf('}') + 1;
+            const jsonStart = text.thithuOf('{');
+            const jsonEnd = text.lastthithuOf('}') + 1;
             const jsonString = text.substring(jsonStart, jsonEnd);
             const resultData = JSON.parse(jsonString);
             
