@@ -11,6 +11,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary: #4f46e5;
@@ -281,6 +283,36 @@
             visibility: visible;
         }
         
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 2rem;
+        }
+        
+        .improvement-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .improvement-up {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+        
+        .improvement-down {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+        
+        .improvement-neutral {
+            background-color: rgba(156, 163, 175, 0.1);
+            color: var(--gray);
+        }
+        
         @media (max-width: 768px) {
             .floating-action-btn {
                 bottom: 1rem;
@@ -393,6 +425,31 @@
                 <button id="start-exam-btn" class="btn-primary px-8 py-3 text-lg inline-flex items-center">
                     <i class="fas fa-play mr-2"></i> Bắt đầu thi
                 </button>
+            </div>
+            
+            <!-- Lịch sử thi (hiển thị ngay từ đầu) -->
+            <div class="exam-card p-6 md:p-8 mt-8" id="history-section">
+                <h3 class="section-title">LỊCH SỬ THI</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white rounded-lg overflow-hidden">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ngày thi</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Điểm số</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Đánh giá</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tiến bộ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-body" class="divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="4" class="px-6 py-4 text-center">Đăng nhập để xem lịch sử thi</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="chart-container">
+                    <canvas id="progress-chart"></canvas>
+                </div>
             </div>
             
             <div class="mt-8 grid md:grid-cols-3 gap-6">
@@ -537,7 +594,7 @@
             </div>
             
             <!-- Lịch sử thi -->
-            <div class="exam-card p-6 md:p-8 mb-8" id="history-section">
+            <div class="exam-card p-6 md:p-8 mb-8">
                 <h3 class="section-title">LỊCH SỬ THI</h3>
                 <div class="overflow-x-auto">
                     <table class="min-w-full bg-white rounded-lg overflow-hidden">
@@ -546,14 +603,18 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ngày thi</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Điểm số</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Đánh giá</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tiến bộ</th>
                             </tr>
                         </thead>
-                        <tbody id="history-body" class="divide-y divide-gray-200">
+                        <tbody id="result-history-body" class="divide-y divide-gray-200">
                             <tr>
-                                <td colspan="3" class="px-6 py-4 text-center">Đăng nhập để xem lịch sử thi</td>
+                                <td colspan="4" class="px-6 py-4 text-center">Đang tải dữ liệu...</td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+                <div class="chart-container">
+                    <canvas id="result-progress-chart"></canvas>
                 </div>
             </div>
             
@@ -597,7 +658,7 @@
             apiKey: "AIzaSyAu4xlTa51eZrb9b2xhWKkbOv-L8gpPDPg",
             authDomain: "xta-tl.firebaseapp.com",
             projectId: "xta-tl",
-            storageBucket: "xta-tl.firebasestorage.app",
+            storageBucket: "xta-tl.appspot.com",
             messagingSenderId: "1049275322449",
             appId: "1:1049275322449:web:9ad1ed1986bb1712942870",
             measurementId: "G-MC2V2CK2XF"
@@ -632,6 +693,8 @@
         let timeLeft = 120 * 60; // 120 phút tính bằng giây
         let timerInterval = null;
         let userAnswers = {};
+        let progressChart = null;
+        let resultProgressChart = null;
         
         // Xử lý đăng nhập/đăng xuất
         loginBtn.addEventListener('click', () => {
@@ -658,16 +721,17 @@
                 // Chưa đăng nhập
                 userInfo.classList.add('hidden');
                 loginBtn.classList.remove('hidden');
-                
-                // Ẩn phần lịch sử
-                document.getElementById('history-section').classList.add('hidden');
             }
         });
 
         // Hàm load lịch sử thi
         function loadExamHistory(userId) {
             const historyBody = document.getElementById('history-body');
-            historyBody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center">Đang tải dữ liệu...</td></tr>';
+            const resultHistoryBody = document.getElementById('result-history-body');
+            
+            // Hiển thị loading
+            if (historyBody) historyBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center">Đang tải dữ liệu...</td></tr>';
+            if (resultHistoryBody) resultHistoryBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center">Đang tải dữ liệu...</td></tr>';
             
             db.collection('exam_results')
                 .where('userId', '==', userId)
@@ -676,40 +740,118 @@
                 .get()
                 .then((querySnapshot) => {
                     if (querySnapshot.empty) {
-                        historyBody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center">Chưa có dữ liệu</td></tr>';
+                        const emptyRow = '<tr><td colspan="4" class="px-6 py-4 text-center">Chưa có dữ liệu</td></tr>';
+                        if (historyBody) historyBody.innerHTML = emptyRow;
+                        if (resultHistoryBody) resultHistoryBody.innerHTML = emptyRow;
                         return;
                     }
                     
-                    historyBody.innerHTML = '';
+                    // Chuẩn bị dữ liệu cho bảng và biểu đồ
+                    const historyData = [];
+                    const chartLabels = [];
+                    const chartData = [];
                     
                     querySnapshot.forEach((doc) => {
                         const data = doc.data();
                         const date = data.timestamp.toDate();
                         const dateStr = date.toLocaleDateString('vi-VN');
+                        const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                        const fullDateStr = `${dateStr} ${timeStr}`;
                         
-                        let rowClass = '';
-                        if (data.totalScore >= 8) rowClass = 'bg-green-50';
-                        else if (data.totalScore >= 6) rowClass = 'bg-blue-50';
-                        else if (data.totalScore >= 4) rowClass = 'bg-amber-50';
-                        else rowClass = 'bg-red-50';
-                        
-                        const row = document.createElement('tr');
-                        row.className = rowClass;
-                        row.innerHTML = `
-                            <td class="px-6 py-4 whitespace-nowrap">${dateStr}</td>
-                            <td class="px-6 py-4 whitespace-nowrap font-bold">${data.totalScore.toFixed(1)}/10</td>
-                            <td class="px-6 py-4">${getScoreFeedback(data.totalScore)}</td>
-                        `;
-                        historyBody.appendChild(row);
+                        historyData.push({
+                            date: fullDateStr,
+                            score: data.totalScore,
+                            feedback: getScoreFeedback(data.totalScore)
+                        });
                     });
                     
-                    // Hiển thị phần lịch sử
-                    document.getElementById('history-section').classList.remove('hidden');
+                    // Đảo ngược thứ tự để hiển thị từ cũ đến mới
+                    historyData.reverse();
+                    
+                    // Tạo dữ liệu cho biểu đồ
+                    historyData.forEach((item, index) => {
+                        chartLabels.push(`Lần ${index + 1}`);
+                        chartData.push(item.score);
+                    });
+                    
+                    // Hiển thị bảng lịch sử
+                    if (historyBody) {
+                        historyBody.innerHTML = '';
+                        historyData.forEach((item, index) => {
+                            const improvement = calculateImprovement(historyData, index);
+                            const row = createHistoryRow(item, improvement);
+                            historyBody.appendChild(row);
+                        });
+                        
+                        // Vẽ biểu đồ tiến bộ
+                        drawProgressChart(chartLabels, chartData);
+                    }
+                    
+                    // Hiển thị bảng lịch sử trong màn hình kết quả
+                    if (resultHistoryBody) {
+                        resultHistoryBody.innerHTML = '';
+                        historyData.forEach((item, index) => {
+                            const improvement = calculateImprovement(historyData, index);
+                            const row = createHistoryRow(item, improvement);
+                            resultHistoryBody.appendChild(row);
+                        });
+                        
+                        // Vẽ biểu đồ tiến bộ trong màn hình kết quả
+                        drawResultProgressChart(chartLabels, chartData);
+                    }
                 })
                 .catch((error) => {
                     console.error("Lỗi khi tải lịch sử:", error);
-                    historyBody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center text-red-600">Có lỗi khi tải dữ liệu</td></tr>';
+                    const errorRow = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-600">Có lỗi khi tải dữ liệu</td></tr>';
+                    if (historyBody) historyBody.innerHTML = errorRow;
+                    if (resultHistoryBody) resultHistoryBody.innerHTML = errorRow;
                 });
+        }
+
+        // Tạo hàng trong bảng lịch sử
+        function createHistoryRow(item, improvement) {
+            const row = document.createElement('tr');
+            
+            let rowClass = '';
+            if (item.score >= 8) rowClass = 'bg-green-50';
+            else if (item.score >= 6) rowClass = 'bg-blue-50';
+            else if (item.score >= 4) rowClass = 'bg-amber-50';
+            else rowClass = 'bg-red-50';
+            
+            row.className = rowClass;
+            
+            let improvementBadge = '';
+            if (improvement) {
+                if (improvement > 0) {
+                    improvementBadge = `<span class="improvement-badge improvement-up"><i class="fas fa-arrow-up mr-1"></i>${improvement}%</span>`;
+                } else if (improvement < 0) {
+                    improvementBadge = `<span class="improvement-badge improvement-down"><i class="fas fa-arrow-down mr-1"></i>${Math.abs(improvement)}%</span>`;
+                } else {
+                    improvementBadge = `<span class="improvement-badge improvement-neutral"><i class="fas fa-equals mr-1"></i>0%</span>`;
+                }
+            }
+            
+            row.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap">${item.date}</td>
+                <td class="px-6 py-4 whitespace-nowrap font-bold">${item.score.toFixed(1)}/10</td>
+                <td class="px-6 py-4">${item.feedback}</td>
+                <td class="px-6 py-4 whitespace-nowrap">${improvementBadge}</td>
+            `;
+            
+            return row;
+        }
+
+        // Tính phần trăm tiến bộ
+        function calculateImprovement(historyData, currentIndex) {
+            if (currentIndex === 0) return null; // Không có dữ liệu trước đó để so sánh
+            
+            const currentScore = historyData[currentIndex].score;
+            const previousScore = historyData[currentIndex - 1].score;
+            
+            if (previousScore === 0) return null; // Tránh chia cho 0
+            
+            const improvement = ((currentScore - previousScore) / previousScore) * 100;
+            return Math.round(improvement * 10) / 10; // Làm tròn 1 chữ số thập phân
         }
 
         function getScoreFeedback(score) {
@@ -717,6 +859,124 @@
             if (score >= 6) return "Khá tốt";
             if (score >= 4) return "Trung bình";
             return "Cần cải thiện";
+        }
+        
+        // Vẽ biểu đồ tiến bộ
+        function drawProgressChart(labels, data) {
+            const ctx = document.getElementById('progress-chart').getContext('2d');
+            
+            // Hủy biểu đồ cũ nếu tồn tại
+            if (progressChart) {
+                progressChart.destroy();
+            }
+            
+            progressChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Điểm số',
+                        data: data,
+                        backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                        borderColor: 'rgba(79, 70, 229, 1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'BIỂU ĐỒ TIẾN BỘ',
+                            font: {
+                                size: 16,
+                                family: "'Noto Serif', serif"
+                            }
+                        },
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Điểm: ${context.raw.toFixed(1)}/10`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 10,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Vẽ biểu đồ tiến bộ trong màn hình kết quả
+        function drawResultProgressChart(labels, data) {
+            const ctx = document.getElementById('result-progress-chart').getContext('2d');
+            
+            // Hủy biểu đồ cũ nếu tồn tại
+            if (resultProgressChart) {
+                resultProgressChart.destroy();
+            }
+            
+            resultProgressChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Điểm số',
+                        data: data,
+                        backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                        borderColor: 'rgba(79, 70, 229, 1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'BIỂU ĐỒ TIẾN BỘ',
+                            font: {
+                                size: 16,
+                                family: "'Noto Serif', serif"
+                            }
+                        },
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Điểm: ${context.raw.toFixed(1)}/10`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 10,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
         }
         
         // Bắt đầu bài thi
@@ -778,6 +1038,12 @@
                 
                 // Cuộn lên đầu trang
                 window.scrollTo({ top: 0, behavior: 'smooth' });
+                
+                // Load lại lịch sử thi nếu đã đăng nhập
+                const user = auth.currentUser;
+                if (user) {
+                    loadExamHistory(user.uid);
+                }
             } catch (error) {
                 console.error("Lỗi khi chấm bài:", error);
                 alert("Có lỗi xảy ra khi chấm bài. Vui lòng thử lại.");
@@ -1047,9 +1313,6 @@
                         totalScore: resultData.totalScore,
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
                     });
-                    
-                    // Cập nhật lịch sử
-                    loadExamHistory(user.uid);
                 } catch (error) {
                     console.error("Lỗi khi lưu kết quả:", error);
                 }
