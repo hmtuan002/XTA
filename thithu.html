@@ -7,6 +7,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <style>
         :root {
             --primary: #4f46e5;
@@ -296,14 +300,15 @@
                     <h1 class="text-2xl md:text-3xl font-bold">THI THỬ VĂN THPT QUỐC GIA</h1>
                     <p class="text-sm md:text-base opacity-90 mt-1">Luyện tập - Nâng cao kỹ năng - Đạt điểm cao</p>
                 </div>
-                <div class="hidden md:block">
-                    <div class="flex items-center space-x-2">
-                        <div class="bg-white/20 p-2 rounded-full">
-                            <i class="fas fa-book-open text-lg"></i>
-                        </div>
-                        <div class="bg-white/20 p-2 rounded-full">
-                            <i class="fas fa-pen-fancy text-lg"></i>
-                        </div>
+                <div class="flex items-center space-x-4">
+                    <div id="user-info" class="hidden items-center space-x-2">
+                        <span id="user-name" class="font-medium"></span>
+                        <button id="logout-btn" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm transition">
+                            Đăng xuất
+                        </button>
+                    </div>
+                    <div id="login-btn" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm transition cursor-pointer">
+                        Đăng nhập
                     </div>
                 </div>
             </div>
@@ -531,6 +536,27 @@
                 </div>
             </div>
             
+            <!-- Lịch sử thi -->
+            <div class="exam-card p-6 md:p-8 mb-8" id="history-section">
+                <h3 class="section-title">LỊCH SỬ THI</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white rounded-lg overflow-hidden">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ngày thi</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Điểm số</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Đánh giá</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-body" class="divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="3" class="px-6 py-4 text-center">Đăng nhập để xem lịch sử thi</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
             <div class="flex justify-center space-x-4">
                 <button id="retry-btn" class="btn-primary px-8 py-3 text-lg inline-flex items-center">
                     <i class="fas fa-redo mr-2"></i> Làm lại
@@ -566,6 +592,21 @@
     <script type="module">
         import { GoogleGenerativeAI } from "@google/generative-ai";
         
+        // Khởi tạo Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyAu4xlTa51eZrb9b2xhWKkbOv-L8gpPDPg",
+            authDomain: "xta-tl.firebaseapp.com",
+            projectId: "xta-tl",
+            storageBucket: "xta-tl.firebasestorage.app",
+            messagingSenderId: "1049275322449",
+            appId: "1:1049275322449:web:9ad1ed1986bb1712942870",
+            measurementId: "G-MC2V2CK2XF"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        
         // Khởi tạo AI
         const API_KEY = "AIzaSyAcZaIvApX_UQKWZzP4uj2J1cCseZ_zkyk";
         const genAI = new GoogleGenerativeAI(API_KEY);
@@ -581,12 +622,102 @@
         const newExamBtn = document.getElementById('new-exam-btn');
         const timer = document.getElementById('timer');
         const fab = document.getElementById('fab');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const userInfo = document.getElementById('user-info');
+        const userName = document.getElementById('user-name');
         
         // Biến toàn cục
         let examData = null;
         let timeLeft = 120 * 60; // 120 phút tính bằng giây
         let timerInterval = null;
         let userAnswers = {};
+        
+        // Xử lý đăng nhập/đăng xuất
+        loginBtn.addEventListener('click', () => {
+            window.location.href = 'login.html';
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            auth.signOut().then(() => {
+                window.location.reload();
+            });
+        });
+
+        // Kiểm tra trạng thái đăng nhập
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                // Đã đăng nhập
+                userInfo.classList.remove('hidden');
+                loginBtn.classList.add('hidden');
+                userName.textContent = user.email;
+                
+                // Load lịch sử thi
+                loadExamHistory(user.uid);
+            } else {
+                // Chưa đăng nhập
+                userInfo.classList.add('hidden');
+                loginBtn.classList.remove('hidden');
+                
+                // Ẩn phần lịch sử
+                document.getElementById('history-section').classList.add('hidden');
+            }
+        });
+
+        // Hàm load lịch sử thi
+        function loadExamHistory(userId) {
+            const historyBody = document.getElementById('history-body');
+            historyBody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center">Đang tải dữ liệu...</td></tr>';
+            
+            db.collection('exam_results')
+                .where('userId', '==', userId)
+                .orderBy('timestamp', 'desc')
+                .limit(5)
+                .get()
+                .then((querySnapshot) => {
+                    if (querySnapshot.empty) {
+                        historyBody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center">Chưa có dữ liệu</td></tr>';
+                        return;
+                    }
+                    
+                    historyBody.innerHTML = '';
+                    
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        const date = data.timestamp.toDate();
+                        const dateStr = date.toLocaleDateString('vi-VN');
+                        
+                        let rowClass = '';
+                        if (data.totalScore >= 8) rowClass = 'bg-green-50';
+                        else if (data.totalScore >= 6) rowClass = 'bg-blue-50';
+                        else if (data.totalScore >= 4) rowClass = 'bg-amber-50';
+                        else rowClass = 'bg-red-50';
+                        
+                        const row = document.createElement('tr');
+                        row.className = rowClass;
+                        row.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap">${dateStr}</td>
+                            <td class="px-6 py-4 whitespace-nowrap font-bold">${data.totalScore.toFixed(1)}/10</td>
+                            <td class="px-6 py-4">${getScoreFeedback(data.totalScore)}</td>
+                        `;
+                        historyBody.appendChild(row);
+                    });
+                    
+                    // Hiển thị phần lịch sử
+                    document.getElementById('history-section').classList.remove('hidden');
+                })
+                .catch((error) => {
+                    console.error("Lỗi khi tải lịch sử:", error);
+                    historyBody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center text-red-600">Có lỗi khi tải dữ liệu</td></tr>';
+                });
+        }
+
+        function getScoreFeedback(score) {
+            if (score >= 8) return "Xuất sắc";
+            if (score >= 6) return "Khá tốt";
+            if (score >= 4) return "Trung bình";
+            return "Cần cải thiện";
+        }
         
         // Bắt đầu bài thi
         startExamBtn.addEventListener('click', async () => {
@@ -902,8 +1033,29 @@
             const jsonStart = text.indexOf('{');
             const jsonEnd = text.lastIndexOf('}') + 1;
             const jsonString = text.substring(jsonStart, jsonEnd);
+            const resultData = JSON.parse(jsonString);
             
-            return JSON.parse(jsonString);
+            // Lưu kết quả nếu người dùng đã đăng nhập
+            const user = auth.currentUser;
+            if (user) {
+                try {
+                    await db.collection('exam_results').add({
+                        userId: user.uid,
+                        examData: examData,
+                        answers: userAnswers,
+                        result: resultData,
+                        totalScore: resultData.totalScore,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    
+                    // Cập nhật lịch sử
+                    loadExamHistory(user.uid);
+                } catch (error) {
+                    console.error("Lỗi khi lưu kết quả:", error);
+                }
+            }
+            
+            return resultData;
         }
         
         // Hiển thị kết quả
