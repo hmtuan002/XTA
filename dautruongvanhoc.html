@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đấu Trường Văn Học</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-light: #6366f1;
+            --primary-dark: #4338ca;
+            --secondary: #f59e0b;
+            --dark: #1e293b;
+            --light: #f8fafc;
+            --gray: #94a3b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+        
+        body {
+            font-family: 'Noto Serif', serif;
+            background-color: #f1f5f9;
+            color: #334155;
+            line-height: 1.6;
+        }
+        
+        .header-gradient {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+        }
+        
+        .exam-card {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .exam-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+        }
+        
+        .question-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            border-left: 4px solid var(--primary);
+        }
+        
+        .timer-container {
+            background-color: white;
+            border-radius: 50px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .timer {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        
+        .timer-warning {
+            color: var(--warning);
+            animation: pulse 1s infinite;
+        }
+        
+        .timer-danger {
+            color: var(--danger);
+            animation: pulse 0.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        
+        .section-title {
+            position: relative;
+            padding-bottom: 8px;
+            margin-bottom: 1.5rem;
+            font-weight: 700;
+            color: var(--dark);
+        }
+        
+        .section-title:after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 50px;
+            height: 3px;
+            background-color: var(--primary);
+            border-radius: 3px;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(79, 70, 229, 0.3);
+        }
+        
+        .btn-secondary {
+            background-color: var(--secondary);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+        }
+        
+        .btn-secondary:hover {
+            background-color: #e67e22;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(245, 158, 11, 0.3);
+        }
+        
+        .answer-input {
+            min-height: 100px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            transition: all 0.3s ease;
+            font-family: 'Noto Serif', serif;
+        }
+        
+        .answer-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+            outline: none;
+        }
+        
+        .result-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+        
+        .result-header {
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .result-good {
+            border-left: 4px solid var(--success);
+        }
+        
+        .result-good .result-header {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+        
+        .result-medium {
+            border-left: 4px solid var(--warning);
+        }
+        
+        .result-medium .result-header {
+            background-color: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+        
+        .result-low {
+            border-left: 4px solid var(--danger);
+        }
+        
+        .result-low .result-header {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+        
+        .result-body {
+            padding: 1.5rem;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            border-radius: 4px;
+            background-color: #e2e8f0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: var(--primary);
+            transition: width 0.5s ease;
+        }
+        
+        .floating-action-btn {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+        
+        .floating-action-btn:hover {
+            transform: translateY(-4px) scale(1.05);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .matchmaking-card {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .opponent-card {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            padding: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .rank-badge {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .rank-1 {
+            background-color: #f59e0b;
+        }
+        
+        .rank-2 {
+            background-color: #94a3b8;
+        }
+        
+        .rank-3 {
+            background-color: #b45309;
+        }
+        
+        .rank-other {
+            background-color: #4f46e5;
+        }
+        
+        .vs-badge {
+            background-color: #ef4444;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Header -->
+    <header class="header-gradient text-white py-6 shadow-lg">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold">ĐẤU TRƯỜNG VĂN HỌC</h1>
+                    <p class="text-sm md:text-base opacity-90 mt-1">Thi đấu - Thăng hạng - Trở thành bậc thầy Văn học</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div id="user-info" class="hidden items-center space-x-4">
+                        <div class="flex items-center space-x-2 bg-white/10 px-3 py-1 rounded-full">
+                            <i class="fas fa-trophy text-yellow-300"></i>
+                            <span id="user-points" class="font-medium">0</span>
+                        </div>
+                        <span id="user-name" class="font-medium"></span>
+                        <button id="logout-btn" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm transition">
+                            Đăng xuất
+                        </button>
+                    </div>
+                    <div id="login-btn" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm transition cursor-pointer">
+                        Đăng nhập
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8">
+        <!-- Start Screen -->
+        <div id="start-screen" class="max-w-4xl mx-auto">
+            <div class="exam-card p-8 text-center mb-8">
+                <div class="flex justify-center mb-6">
+                    <div class="bg-blue-100 p-4 rounded-full inline-block">
+                        <i class="fas fa-gamepad text-4xl text-blue-600"></i>
+                    </div>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-bold mb-4 text-gray-800">Chào mừng đến với Đấu Trường Văn Học</h2>
+                <p class="text-gray-600 mb-8">Thi đấu trực tuyến với các thí sinh khác và thăng hạng bậc thầy Văn học</p>
+                
+                <div class="grid md:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-blue-50 p-6 rounded-lg border border-blue-100">
+                        <div class="flex items-center mb-3">
+                            <div class="bg-blue-100 p-2 rounded-full mr-3">
+                                <i class="fas fa-users text-blue-600"></i>
+                            </div>
+                            <h3 class="font-bold text-gray-800">Đấu 1 vs 1</h3>
+                        </div>
+                        <ul class="text-left text-gray-600 text-sm space-y-2">
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-blue-500 mt-1 mr-2 text-xs"></i>
+                                <span>Ghép đấu ngẫu nhiên</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-blue-500 mt-1 mr-2 text-xs"></i>
+                                <span>Thi đấu với đề khác nhau</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-blue-500 mt-1 mr-2 text-xs"></i>
+                                <span>Thắng +10 điểm, thua -5 điểm</span>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div class="bg-amber-50 p-6 rounded-lg border border-amber-100">
+                        <div class="flex items-center mb-3">
+                            <div class="bg-amber-100 p-2 rounded-full mr-3">
+                                <i class="fas fa-book-open text-amber-600"></i>
+                            </div>
+                            <h3 class="font-bold text-gray-800">Đọc hiểu</h3>
+                        </div>
+                        <ul class="text-left text-gray-600 text-sm space-y-2">
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-amber-500 mt-1 mr-2 text-xs"></i>
+                                <span>Đoạn văn/đoạn thơ 150-200 từ</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-amber-500 mt-1 mr-2 text-xs"></i>
+                                <span>4-6 câu hỏi đọc hiểu</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-amber-500 mt-1 mr-2 text-xs"></i>
+                                <span>Nhiều dạng câu hỏi khác nhau</span>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div class="bg-purple-50 p-6 rounded-lg border border-purple-100">
+                        <div class="flex items-center mb-3">
+                            <div class="bg-purple-100 p-2 rounded-full mr-3">
+                                <i class="fas fa-trophy text-purple-600"></i>
+                            </div>
+                            <h3 class="font-bold text-gray-800">Xếp hạng</h3>
+                        </div>
+                        <ul class="text-left text-gray-600 text-sm space-y-2">
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-purple-500 mt-1 mr-2 text-xs"></i>
+                                <span>Bảng xếp hạng toàn hệ thống</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-purple-500 mt-1 mr-2 text-xs"></i>
+                                <span>Lịch sử thi đấu cá nhân</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-purple-500 mt-1 mr-2 text-xs"></i>
+                                <span>Thăng hạng theo điểm</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded-lg mb-8">
+                    <div class="flex items-center justify-center space-x-4">
+                        <div class="flex items-center">
+                            <i class="fas fa-clock text-gray-500 mr-2"></i>
+                            <span class="font-medium">Thời gian: <span class="text-blue-600">10 phút</span></span>
+                        </div>
+                        <div class="h-4 w-px bg-gray-300"></div>
+                        <div class="flex items-center">
+                            <i class="fas fa-trophy text-gray-500 mr-2"></i>
+                            <span class="font-medium">Điểm thông thạo: <span id="user-points-main" class="text-blue-600">0</span></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="find-match-btn" class="btn-primary px-8 py-3 text-lg inline-flex items-center">
+                    <i class="fas fa-search mr-2"></i> Tìm đối thủ
+                </button>
+            </div>
+            
+            <!-- Bảng xếp hạng -->
+            <div class="exam-card p-6 md:p-8 mb-8">
+                <h3 class="section-title">BẢNG XẾP HẠNG</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white rounded-lg overflow-hidden">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hạng</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tên người chơi</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Điểm</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trận</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-body" class="divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="4" class="px-6 py-4 text-center">Đang tải dữ liệu...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Lịch sử thi đấu -->
+            <div class="exam-card p-6 md:p-8" id="history-section">
+                <h3 class="section-title">LỊCH SỬ THI ĐẤU</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white rounded-lg overflow-hidden">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ngày</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Đối thủ</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kết quả</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Điểm</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-body" class="divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="4" class="px-6 py-4 text-center">Đăng nhập để xem lịch sử thi đấu</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Matchmaking Screen -->
+        <div id="matchmaking-screen" class="max-w-4xl mx-auto hidden">
+            <div class="matchmaking-card">
+                <div class="flex justify-center mb-6">
+                    <div class="bg-blue-100 p-4 rounded-full inline-block">
+                        <i class="fas fa-search text-4xl text-blue-600"></i>
+                    </div>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-bold mb-4 text-gray-800">ĐANG TÌM ĐỐI THỦ</h2>
+                <p class="text-gray-600 mb-8">Hệ thống đang tìm kiếm đối thủ phù hợp cho bạn...</p>
+                
+                <div class="flex justify-center mb-6">
+                    <div class="animate-pulse">
+                        <div class="h-8 w-8 bg-blue-500 rounded-full"></div>
+                    </div>
+                </div>
+                
+                <button id="cancel-match-btn" class="btn-secondary px-8 py-3 text-lg inline-flex items-center">
+                    <i class="fas fa-times mr-2"></i> Hủy tìm kiếm
+                </button>
+            </div>
+        </div>
+        
+        <!-- Opponent Found Screen -->
+        <div id="opponent-found-screen" class="max-w-4xl mx-auto hidden">
+            <div class="matchmaking-card">
+                <div class="flex justify-center mb-6">
+                    <div class="bg-green-100 p-4 rounded-full inline-block">
+                        <i class="fas fa-user-check text-4xl text-green-600"></i>
+                    </div>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-bold mb-4 text-gray-800">ĐÃ TÌM THẤY ĐỐI THỦ</h2>
+                <p class="text-gray-600 mb-8">Chuẩn bị bắt đầu trận đấu!</p>
+                
+                <div class="opponent-card mb-8">
+                    <div class="flex items-center">
+                        <div class="bg-blue-100 p-3 rounded-full mr-4">
+                            <i class="fas fa-user text-blue-600 text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 id="player-name" class="font-bold text-gray-800">Bạn</h3>
+                            <p class="text-sm text-gray-500"><span id="player-points">0</span> điểm</p>
+                        </div>
+                    </div>
+                    
+                    <div class="vs-badge">VS</div>
+                    
+                    <div class="flex items-center">
+                        <div>
+                            <h3 id="opponent-name" class="font-bold text-gray-800 text-right">Đối thủ</h3>
+                            <p class="text-sm text-gray-500 text-right"><span id="opponent-points">0</span> điểm</p>
+                        </div>
+                        <div class="bg-red-100 p-3 rounded-full ml-4">
+                            <i class="fas fa-user text-red-600 text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="start-battle-btn" class="btn-primary px-8 py-3 text-lg inline-flex items-center">
+                    <i class="fas fa-play mr-2"></i> Bắt đầu thi đấu
+                </button>
+            </div>
+        </div>
+        
+        <!-- Exam Screen -->
+        <div id="exam-screen" class="max-w-4xl mx-auto hidden">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800">THI ĐẤU VĂN HỌC</h2>
+                    <p class="text-sm text-gray-500">Thời gian làm bài: 10 phút</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="bg-white px-4 py-2 rounded-lg shadow-sm">
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-user text-gray-500"></i>
+                            <span id="opponent-name-exam" class="font-medium">Đối thủ</span>
+                        </div>
+                    </div>
+                    <div class="timer-container px-4 py-2">
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-clock text-gray-500"></i>
+                            <span id="timer" class="timer text-lg">10:00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="exam-card p-6 md:p-8 mb-8">
+                <h3 class="section-title">PHẦN THI ĐỌC HIỂU (4.0 điểm)</h3>
+                <div id="reading-passage" class="mb-6 italic bg-gray-50 p-4 rounded-lg text-gray-700"></div>
+                <div id="reading-questions" class="space-y-4"></div>
+            </div>
+            
+            <div class="flex justify-center">
+                <button id="submit-exam-btn" class="btn-primary px-8 py-3 text-lg inline-flex items-center">
+                    <i class="fas fa-paper-plane mr-2"></i> Nộp bài
+                </button>
+            </div>
+        </div>
+        
+        <!-- Waiting for Opponent Screen -->
+        <div id="waiting-screen" class="max-w-4xl mx-auto hidden">
+            <div class="matchmaking-card">
+                <div class="flex justify-center mb-6">
+                    <div class="bg-blue-100 p-4 rounded-full inline-block">
+                        <i class="fas fa-hourglass-half text-4xl text-blue-600"></i>
+                    </div>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-bold mb-4 text-gray-800">CHỜ ĐỐI THỦ HOÀN THÀNH</h2>
+                <p class="text-gray-600 mb-8">Đối thủ của bạn đang hoàn thành bài thi...</p>
+                
+                <div class="flex justify-center mb-6">
+                    <div class="animate-pulse">
+                        <div class="h-8 w-8 bg-blue-500 rounded-full"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Result Screen -->
+        <div id="result-screen" class="max-w-4xl mx-auto hidden">
+            <div class="exam-card p-6 md:p-8 text-center mb-8">
+                <div class="flex justify-center mb-6">
+                    <div id="result-icon" class="bg-blue-100 p-4 rounded-full inline-block">
+                        <i class="fas fa-trophy text-4xl text-blue-600"></i>
+                    </div>
+                </div>
+                <h2 id="result-title" class="text-2xl md:text-3xl font-bold mb-2 text-gray-800">KẾT QUẢ TRẬN ĐẤU</h2>
+                <p id="result-subtitle" class="text-gray-600 mb-6">Kết quả trận đấu của bạn</p>
+                
+                <div class="grid md:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                        <div class="flex justify-center mb-4">
+                            <div class="bg-blue-100 p-3 rounded-full">
+                                <i class="fas fa-user text-blue-600 text-xl"></i>
+                            </div>
+                        </div>
+                        <h3 id="player-result-name" class="font-bold text-gray-800 mb-1">Bạn</h3>
+                        <div id="player-score" class="text-3xl font-bold mb-2 text-blue-600">0.0</div>
+                        <div id="player-points-change" class="text-sm">+0 điểm</div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                        <div class="flex justify-center mb-4">
+                            <div class="bg-red-100 p-3 rounded-full">
+                                <i class="fas fa-user text-red-600 text-xl"></i>
+                            </div>
+                        </div>
+                        <h3 id="opponent-result-name" class="font-bold text-gray-800 mb-1">Đối thủ</h3>
+                        <div id="opponent-score" class="text-3xl font-bold mb-2 text-red-600">0.0</div>
+                        <div id="opponent-points-change" class="text-sm">+0 điểm</div>
+                    </div>
+                </div>
+                
+                <div id="result-feedback" class="bg-gray-50 p-4 rounded-lg mb-8 text-left">
+                    <p id="result-comment" class="mb-2"></p>
+                    <p id="result-tip" class="text-sm text-gray-600"></p>
+                </div>
+                
+                <div class="flex justify-center space-x-4">
+                    <button id="play-again-btn" class="btn-primary px-8 py-3 text-lg inline-flex items-center">
+                        <i class="fas fa-redo mr-2"></i> Chơi lại
+                    </button>
+                    <button id="back-to-home-btn" class="btn-secondary px-8 py-3 text-lg inline-flex items-center">
+                        <i class="fas fa-home mr-2"></i> Về trang chủ
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Chi tiết bài làm -->
+            <div class="exam-card p-6 md:p-8">
+                <h3 class="section-title">CHI TIẾT BÀI LÀM</h3>
+                
+                <div id="reading-results" class="mb-8">
+                    <h4 class="font-bold text-lg mb-4 text-gray-800">Phần đọc hiểu (4.0 điểm)</h4>
+                    <div id="reading-feedback" class="space-y-4"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-6 mt-12">
+        <div class="container mx-auto px-4 text-center">
+            <p class="mb-2">Đấu Trường Văn Học - Thi đấu trực tuyến môn Ngữ Văn</p>
+            <p class="text-gray-400 text-sm">© 2025 - Phát triển bởi Hoàng Minh Tuấn và Trương Viết Duy Chương</p>
+        </div>
+    </footer>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "@google/generative-ai": "https://esm.run/@google/generative-ai"
+            }
+        }
+    </script>
+    
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+        
+        // Khởi tạo Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyAu4xlTa51eZrb9b2xhWKkbOv-L8gpPDPg",
+            authDomain: "xta-tl.firebaseapp.com",
+            projectId: "xta-tl",
+            storageBucket: "xta-tl.appspot.com",
+            messagingSenderId: "1049275322449",
+            appId: "1:1049275322449:web:9ad1ed1986bb1712942870",
+            measurementId: "G-MC2V2CK2XF"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        
+        // Khởi tạo AI
+        const API_KEY = "AIzaSyAcZaIvApX_UQKWZzP4uj2J1cCseZ_zkyk";
+        const genAI = new GoogleGenerativeAI(API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-thinking-exp-01-21" });
+        
+        // DOM Elements
+        const startScreen = document.getElementById('start-screen');
+        const matchmakingScreen = document.getElementById('matchmaking-screen');
+        const opponentFoundScreen = document.getElementById('opponent-found-screen');
+        const examScreen = document.getElementById('exam-screen');
+        const waitingScreen = document.getElementById('waiting-screen');
+        const resultScreen = document.getElementById('result-screen');
+        
+        const findMatchBtn = document.getElementById('find-match-btn');
+        const cancelMatchBtn = document.getElementById('cancel-match-btn');
+        const startBattleBtn = document.getElementById('start-battle-btn');
+        const submitExamBtn = document.getElementById('submit-exam-btn');
+        const playAgainBtn = document.getElementById('play-again-btn');
+        const backToHomeBtn = document.getElementById('back-to-home-btn');
+        
+        const timer = document.getElementById('timer');
+        const userInfo = document.getElementById('user-info');
+        const userName = document.getElementById('user-name');
+        const userPoints = document.getElementById('user-points');
+        const userPointsMain = document.getElementById('user-points-main');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        
+        // Biến toàn cục
+        let examData = null;
+        let timeLeft = 10 * 60; // 10 phút tính bằng giây
+        let timerInterval = null;
+        let userAnswers = {};
+        let currentMatch = null;
+        let currentUser = null;
+        let userPointsValue = 0;
+        let matchListener = null;
+        
+        // Xử lý đăng nhập/đăng xuất
+        loginBtn.addEventListener('click', () => {
+            window.location.href = 'login.html';
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            auth.signOut().then(() => {
+                window.location.reload();
+            });
+        });
+
+        // Kiểm tra trạng thái đăng nhập
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                // Đã đăng nhập
+                currentUser = user;
+                userInfo.classList.remove('hidden');
+                loginBtn.classList.add('hidden');
+                userName.textContent = user.email.split('@')[0];
+                
+                // Load thông tin người dùng
+                loadUserData(user.uid);
+                
+                // Load lịch sử thi đấu
+                loadMatchHistory(user.uid);
+                
+                // Load bảng xếp hạng
+                loadLeaderboard();
+            } else {
+                // Chưa đăng nhập
+                currentUser = null;
+                userInfo.classList.add('hidden');
+                loginBtn.classList.remove('hidden');
+                
+                // Ẩn phần lịch sử
+                document.getElementById('history-section').classList.add('hidden');
+            }
+        });
+
+        // Hàm load thông tin người dùng
+        function loadUserData(userId) {
+            db.collection('users').doc(userId).get()
+                .then((doc) => {
+                    if (doc.exists) {
+                        userPointsValue = doc.data().points || 0;
+                        userPoints.textContent = userPointsValue;
+                        userPointsMain.textContent = userPointsValue;
+                    } else {
+                        // Tạo tài khoản mới nếu chưa có
+                        db.collection('users').doc(userId).set({
+                            points: 0,
+                            matches: 0,
+                            wins: 0,
+                            losses: 0,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        
+                        userPointsValue = 0;
+                        userPoints.textContent = 0;
+                        userPointsMain.textContent = 0;
+                    }
+                })
+                .catch((error) => {
+                    console.error("Lỗi khi tải thông tin người dùng:", error);
+                });
+        }
+
+        // Hàm load lịch sử thi đấu
+        function loadMatchHistory(userId) {
+            const historyBody = document.getElementById('history-body');
+            historyBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center">Đang tải dữ liệu...</td></tr>';
+            
+            db.collection('matches')
+                .where('players', 'array-contains', userId)
+                .orderBy('timestamp', 'desc')
+                .limit(10)
+                .get()
+                .then((querySnapshot) => {
+                    if (querySnapshot.empty) {
+                        historyBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center">Chưa có dữ liệu</td></tr>';
+                        return;
+                    }
+                    
+                    historyBody.innerHTML = '';
+                    
+                    querySnapshot.forEach(async (doc) => {
+                        const data = doc.data();
+                        const date = data.timestamp.toDate();
+                        const dateStr = date.toLocaleDateString('vi-VN');
+                        
+                        // Xác định đối thủ
+                        const opponentId = data.players.find(id => id !== userId);
+                        const opponentDoc = await db.collection('users').doc(opponentId).get();
+                        const opponentName = opponentDoc.exists ? opponentDoc.data().displayName || opponentId : opponentId;
+                        
+                        // Xác định kết quả
+                        const isWinner = data.winner === userId;
+                        const isDraw = data.winner === 'draw';
+                        
+                        let resultText = '';
+                        let resultClass = '';
+                        let pointsChange = '';
+                        
+                        if (isDraw) {
+                            resultText = 'Hòa';
+                            resultClass = 'text-gray-600';
+                            pointsChange = '+0';
+                        } else if (isWinner) {
+                            resultText = 'Thắng';
+                            resultClass = 'text-green-600';
+                            pointsChange = '+10';
+                        } else {
+                            resultText = 'Thua';
+                            resultClass = 'text-red-600';
+                            pointsChange = '-5';
+                        }
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap">${dateStr}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${opponentName}</td>
+                            <td class="px-6 py-4 whitespace-nowrap font-bold ${resultClass}">${resultText}</td>
+                            <td class="px-6 py-4 whitespace-nowrap ${resultClass}">${pointsChange}</td>
+                        `;
+                        historyBody.appendChild(row);
+                    });
+                    
+                    // Hiển thị phần lịch sử
+                    document.getElementById('history-section').classList.remove('hidden');
+                })
+                .catch((error) => {
+                    console.error("Lỗi khi tải lịch sử:", error);
+                    historyBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-600">Có lỗi khi tải dữ liệu</td></tr>';
+                });
+        }
+
+        // Hàm load bảng xếp hạng
+        function loadLeaderboard() {
+            const leaderboardBody = document.getElementById('leaderboard-body');
+            leaderboardBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center">Đang tải dữ liệu...</td></tr>';
+            
+            db.collection('users')
+                .orderBy('points', 'desc')
+                .limit(10)
+                .get()
+                .then((querySnapshot) => {
+                    if (querySnapshot.empty) {
+                        leaderboardBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center">Chưa có dữ liệu</td></tr>';
+                        return;
+                    }
+                    
+                    leaderboardBody.innerHTML = '';
+                    
+                    querySnapshot.forEach((doc, index) => {
+                        const data = doc.data();
+                        const displayName = data.displayName || doc.id.split('@')[0];
+                        
+                        let rankClass = 'rank-other';
+                        if (index === 0) rankClass = 'rank-1';
+                        else if (index === 1) rankClass = 'rank-2';
+                        else if (index === 2) rankClass = 'rank-3';
+                        
+                        const row = document.createElement('tr');
+                        row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                        row.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="${rankClass} mr-3">${index + 1}</div>
+                                    <span>${index + 1}</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">${displayName}</td>
+                            <td class="px-6 py-4 whitespace-nowrap font-bold">${data.points || 0}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${data.matches || 0}</td>
+                        `;
+                        leaderboardBody.appendChild(row);
+                    });
+                })
+                .catch((error) => {
+                    console.error("Lỗi khi tải bảng xếp hạng:", error);
+                    leaderboardBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-600">Có lỗi khi tải dữ liệu</td></tr>';
+                });
+        }
+
+        // Tìm đối thủ
+        findMatchBtn.addEventListener('click', () => {
+            if (!currentUser) {
+                alert("Vui lòng đăng nhập để thi đấu");
+                return;
+            }
+            
+            startScreen.classList.add('hidden');
+            matchmakingScreen.classList.remove('hidden');
+            
+            // Tạo phòng chờ
+            db.collection('matchmaking').add({
+                userId: currentUser.uid,
+                points: userPointsValue,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then((docRef) => {
+                const matchmakingId = docRef.id;
+                
+                // Lắng nghe tìm đối thủ
+                matchListener = db.collection('matches')
+                    .where('players', 'array-contains', currentUser.uid)
+                    .where('status', '==', 'pending')
+                    .onSnapshot((snapshot) => {
+                        if (!snapshot.empty) {
+                            snapshot.forEach((doc) => {
+                                currentMatch = doc.data();
+                                currentMatch.id = doc.id;
+                                
+                                // Hiển thị thông tin đối thủ
+                                displayOpponentInfo();
+                                
+                                // Chuyển sang màn hình đã tìm thấy đối thủ
+                                matchmakingScreen.classList.add('hidden');
+                                opponentFoundScreen.classList.remove('hidden');
+                                
+                                // Dừng lắng nghe
+                                if (matchListener) matchListener();
+                            });
+                        }
+                    });
+                
+                // Hủy tìm kiếm sau 60s nếu không tìm thấy
+                setTimeout(() => {
+                    if (!currentMatch) {
+                        cancelMatchmaking(matchmakingId);
+                    }
+                }, 60000);
+            });
+        });
+
+        // Hủy tìm kiếm đối thủ
+        cancelMatchBtn.addEventListener('click', () => {
+            cancelMatchmaking();
+        });
+
+        function cancelMatchmaking(matchmakingId) {
+            if (matchListener) matchListener();
+            
+            if (matchmakingId) {
+                db.collection('matchmaking').doc(matchmakingId).delete();
+            }
+            
+            matchmakingScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+            currentMatch = null;
+        }
+
+        // Hiển thị thông tin đối thủ
+        function displayOpponentInfo() {
+            const opponentId = currentMatch.players.find(id => id !== currentUser.uid);
+            
+            db.collection('users').doc(opponentId).get()
+                .then((doc) => {
+                    if (doc.exists) {
+                        const opponentData = doc.data();
+                        const opponentName = opponentData.displayName || opponentId.split('@')[0];
+                        const opponentPoints = opponentData.points || 0;
+                        
+                        document.getElementById('opponent-name').textContent = opponentName;
+                        document.getElementById('opponent-points').textContent = opponentPoints;
+                        document.getElementById('opponent-name-exam').textContent = opponentName;
+                        
+                        document.getElementById('player-name').textContent = currentUser.email.split('@')[0];
+                        document.getElementById('player-points').textContent = userPointsValue;
+                        
+                        // Cập nhật cho màn hình kết quả
+                        document.getElementById('player-result-name').textContent = currentUser.email.split('@')[0];
+                        document.getElementById('opponent-result-name').textContent = opponentName;
+                    }
+                });
+        }
+
+        // Bắt đầu trận đấu
+        startBattleBtn.addEventListener('click', async () => {
+            opponentFoundScreen.classList.add('hidden');
+            examScreen.classList.remove('hidden');
+            
+            // Hiển thị loading
+            startBattleBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Đang tạo đề thi...';
+            startBattleBtn.disabled = true;
+            
+            try {
+                // Tạo đề thi bằng AI
+                examData = await generateExam();
+                
+                // Hiển thị đề thi
+                displayExam(examData);
+                
+                // Bắt đầu đếm ngược
+                startTimer();
+                
+                // Cập nhật trạng thái trận đấu
+                await db.collection('matches').doc(currentMatch.id).update({
+                    status: 'in_progress',
+                    examData: examData,
+                    startTime: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                // Lắng nghe kết quả trận đấu
+                listenForMatchResult();
+            } catch (error) {
+                console.error("Lỗi khi bắt đầu trận đấu:", error);
+                alert("Có lỗi xảy ra khi bắt đầu trận đấu. Vui lòng thử lại.");
+                cancelMatchmaking();
+            } finally {
+                startBattleBtn.innerHTML = '<i class="fas fa-play mr-2"></i> Bắt đầu thi đấu';
+                startBattleBtn.disabled = false;
+            }
+        });
+
+        // Lắng nghe kết quả trận đấu
+        function listenForMatchResult() {
+            db.collection('matches').doc(currentMatch.id)
+                .onSnapshot((doc) => {
+                    const matchData = doc.data();
+                    
+                    if (matchData.status === 'completed') {
+                        // Nếu người chơi đã nộp bài, hiển thị màn hình chờ
+                        if (userAnswers.submitted) {
+                            displayMatchResult(matchData);
+                        } else {
+                            // Nếu đối thủ đã nộp bài trước
+                            examScreen.classList.add('hidden');
+                            waitingScreen.classList.remove('hidden');
+                        }
+                    }
+                });
+        }
+
+        // Tạo đề thi bằng AI
+        async function generateExam() {
+            const prompt = `
+                Bạn hãy tạo một đề thi Đọc hiểu Ngữ Văn THPT Quốc Gia theo cấu trúc sau:
+                
+                I. ĐỌC HIỂU (4 điểm)
+                - Một đoạn văn/đoạn thơ khoảng 150-200 từ (có thể trích từ tác phẩm văn học Việt Nam hoặc nước ngoài)
+                - 4-6 câu hỏi đọc hiểu về đoạn văn đó, bao gồm các dạng:
+                  + Câu hỏi nhận biết (phương thức biểu đạt, phong cách ngôn ngữ...)
+                  + Câu hỏi thông hiểu (giải thích từ ngữ, nội dung đoạn văn...)
+                  + Câu hỏi vận dụng (liên hệ thực tế, rút ra thông điệp...)
+                
+                Yêu cầu:
+                - Đề thi phải bám sát cấu trúc và mức độ đề thi thật
+                - Câu hỏi rõ ràng, không đánh đố
+                - Đoạn văn đọc hiểu phải có giá trị văn học và phù hợp với học sinh THPT
+                
+                Trả lời bằng JSON theo định dạng sau:
+                {
+                    "reading": {
+                        "passage": "Đoạn văn/đoạn thơ...",
+                        "questions": [
+                            {
+                                "number": 1,
+                                "content": "Nội dung câu hỏi",
+                                "type": "Nhận biết/Thông hiểu/Vận dụng"
+                            },
+                            ...
+                        ]
+                    }
+                }
+            `;
+            
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+            
+            // Tìm và trích xuất JSON từ phản hồi
+            const jsonStart = text.indexOf('{');
+            const jsonEnd = text.lastIndexOf('}') + 1;
+            const jsonString = text.substring(jsonStart, jsonEnd);
+            
+            return JSON.parse(jsonString);
+        }
+        
+        // Hiển thị đề thi lên giao diện
+        function displayExam(data) {
+            // Phần đọc hiểu
+            document.getElementById('reading-passage').textContent = data.reading.passage;
+            
+            const questionsContainer = document.getElementById('reading-questions');
+            questionsContainer.innerHTML = '';
+            
+            data.reading.questions.forEach((question, index) => {
+                const questionElement = document.createElement('div');
+                questionElement.className = 'question-card p-5';
+                questionElement.innerHTML = `
+                    <p class="font-bold text-gray-700 mb-2"><span class="text-primary">Câu ${question.number}:</span> ${question.content}</p>
+                    <textarea id="reading-answer-${question.number}" class="answer-input w-full mt-2" placeholder="Nhập câu trả lời của bạn..."></textarea>
+                    <div class="text-xs text-gray-500 mt-1">Dạng câu hỏi: ${question.type}</div>
+                `;
+                questionsContainer.appendChild(questionElement);
+            });
+        }
+        
+        // Bắt đầu đếm ngược
+        function startTimer() {
+            updateTimerDisplay();
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                
+                if (timeLeft <= 0) {
+                    stopTimer();
+                    alert("Hết giờ làm bài! Hệ thống sẽ tự động nộp bài.");
+                    submitExam();
+                }
+            }, 1000);
+        }
+        
+        // Cập nhật hiển thị đồng hồ
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            timer.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Đổi màu và hiệu ứng khi thời gian sắp hết
+            timer.className = 'timer text-lg';
+            if (timeLeft <= 60) { // 1 phút cuối
+                timer.classList.add('timer-warning');
+            }
+            if (timeLeft <= 30) { // 30 giây cuối
+                timer.classList.remove('timer-warning');
+                timer.classList.add('timer-danger');
+            }
+        }
+        
+        // Dừng đồng hồ
+        function stopTimer() {
+            clearInterval(timerInterval);
+        }
+        
+        // Nộp bài thi
+        submitExamBtn.addEventListener('click', () => {
+            submitExam();
+        });
+        
+        async function submitExam() {
+            // Hiển thị loading
+            submitExamBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Đang chấm điểm...';
+            submitExamBtn.disabled = true;
+            
+            try {
+                // Thu thập câu trả lời
+                collectAnswers();
+                
+                // Đánh dấu đã nộp bài
+                userAnswers.submitted = true;
+                
+                // Chấm điểm bằng AI
+                const result = await evaluateExam(examData, userAnswers);
+                
+                // Cập nhật kết quả vào trận đấu
+                await updateMatchResult(result);
+                
+                // Kiểm tra xem đối thủ đã nộp bài chưa
+                const matchDoc = await db.collection('matches').doc(currentMatch.id).get();
+                const matchData = matchDoc.data();
+                
+                if (matchData.status === 'completed') {
+                    // Nếu đối thủ đã nộp bài, hiển thị kết quả
+                    displayMatchResult(matchData);
+                } else {
+                    // Nếu chưa, hiển thị màn hình chờ
+                    examScreen.classList.add('hidden');
+                    waitingScreen.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error("Lỗi khi nộp bài:", error);
+                alert("Có lỗi xảy ra khi nộp bài. Vui lòng thử lại.");
+            } finally {
+                submitExamBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i> Nộp bài';
+                submitExamBtn.disabled = false;
+            }
+        }
+        
+        // Thu thập câu trả lời của thí sinh
+        function collectAnswers() {
+            userAnswers = {
+                reading: {},
+                submitted: false
+            };
+            
+            // Thu thập câu trả lời phần đọc hiểu
+            examData.reading.questions.forEach(question => {
+                const answerElement = document.getElementById(`reading-answer-${question.number}`);
+                userAnswers.reading[question.number] = answerElement.value;
+            });
+        }
+        
+        // Chấm điểm bài thi bằng AI
+        async function evaluateExam(examData, userAnswers) {
+            const prompt = `
+                Bạn hãy chấm điểm bài thi Đọc hiểu Ngữ Văn THPT Quốc Gia dựa trên:
+                
+                1. Đề thi:
+                ${JSON.stringify(examData, null, 2)}
+                
+                2. Bài làm của học sinh:
+                ${JSON.stringify(userAnswers, null, 2)}
+                
+                Yêu cầu chấm điểm:
+                - Chấm điểm theo thang điểm chuẩn của Bộ GD&ĐT (tổng 4 điểm)
+                - Đưa ra nhận xét ngắn gọn, khách quan cho từng câu
+                - Tính tổng điểm
+                
+                Tiêu chí chấm điểm:
+                * Phần đọc hiểu:
+                - Câu hỏi nhận biết: đúng/sai rõ ràng (0.5-1 điểm)
+                - Câu hỏi thông hiểu: đánh giá mức độ hiểu vấn đề (0.5-1 điểm)
+                - Câu hỏi vận dụng: đánh giá khả năng phân tích, liên hệ (0.5-1 điểm)
+                
+                Trả lời bằng JSON theo định dạng sau:
+                {
+                    "reading": {
+                        "totalScore": 3.5,
+                        "questions": [
+                            {
+                                "number": 1,
+                                "score": 0.5,
+                                "feedback": "Nhận xét...",
+                                "improvement": "Gợi ý cải thiện..."
+                            },
+                            ...
+                        ]
+                    },
+                    "totalScore": 3.5
+                }
+            `;
+            
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+            
+            // Tìm và trích xuất JSON từ phản hồi
+            const jsonStart = text.indexOf('{');
+            const jsonEnd = text.lastIndexOf('}') + 1;
+            const jsonString = text.substring(jsonStart, jsonEnd);
+            
+            return JSON.parse(jsonString);
+        }
+        
+        // Cập nhật kết quả trận đấu
+        async function updateMatchResult(result) {
+            const matchRef = db.collection('matches').doc(currentMatch.id);
+            
+            // Thêm kết quả của người chơi hiện tại
+            await matchRef.update({
+                [`results.${currentUser.uid}`]: {
+                    score: result.totalScore,
+                    answers: userAnswers,
+                    evaluation: result
+                }
+            });
+            
+            // Kiểm tra xem cả 2 người chơi đã nộp bài chưa
+            const matchDoc = await matchRef.get();
+            const matchData = matchDoc.data();
+            
+            if (Object.keys(matchData.results).length === 2) {
+                // Xác định người thắng cuộc
+                const player1 = matchData.players[0];
+                const player2 = matchData.players[1];
+                
+                const score1 = matchData.results[player1].score;
+                const score2 = matchData.results[player2].score;
+                
+                let winner = 'draw';
+                if (score1 > score2) winner = player1;
+                else if (score2 > score1) winner = player2;
+                
+                // Cập nhật trạng thái trận đấu
+                await matchRef.update({
+                    status: 'completed',
+                    winner: winner,
+                    endTime: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                // Cập nhật điểm cho người chơi
+                await updatePlayerPoints(winner);
+            }
+        }
+        
+        // Cập nhật điểm người chơi
+        async function updatePlayerPoints(winner) {
+            const player1 = currentMatch.players[0];
+            const player2 = currentMatch.players[1];
+            
+            const batch = db.batch();
+            
+            // Cập nhật thống kê cho người chơi 1
+            const player1Ref = db.collection('users').doc(player1);
+            batch.update(player1Ref, {
+                matches: firebase.firestore.FieldValue.increment(1),
+                points: firebase.firestore.FieldValue.increment(winner === player1 ? 10 : (winner === 'draw' ? 0 : -5)),
+                wins: firebase.firestore.FieldValue.increment(winner === player1 ? 1 : 0),
+                losses: firebase.firestore.FieldValue.increment(winner === player2 ? 1 : 0)
+            });
+            
+            // Cập nhật thống kê cho người chơi 2
+            const player2Ref = db.collection('users').doc(player2);
+            batch.update(player2Ref, {
+                matches: firebase.firestore.FieldValue.increment(1),
+                points: firebase.firestore.FieldValue.increment(winner === player2 ? 10 : (winner === 'draw' ? 0 : -5)),
+                wins: firebase.firestore.FieldValue.increment(winner === player2 ? 1 : 0),
+                losses: firebase.firestore.FieldValue.increment(winner === player1 ? 1 : 0)
+            });
+            
+            await batch.commit();
+            
+            // Cập nhật điểm hiển thị
+            if (currentUser) {
+                loadUserData(currentUser.uid);
+            }
+            
+            // Cập nhật bảng xếp hạng
+            loadLeaderboard();
+        }
+        
+        // Hiển thị kết quả trận đấu
+        function displayMatchResult(matchData) {
+            waitingScreen.classList.add('hidden');
+            resultScreen.classList.remove('hidden');
+            
+            const playerResult = matchData.results[currentUser.uid];
+            const opponentId = currentMatch.players.find(id => id !== currentUser.uid);
+            const opponentResult = matchData.results[opponentId];
+            
+            // Hiển thị điểm số
+            document.getElementById('player-score').textContent = playerResult.score.toFixed(1);
+            document.getElementById('opponent-score').textContent = opponentResult.score.toFixed(1);
+            
+            // Xác định kết quả
+            let resultTitle = '';
+            let resultSubtitle = '';
+            let resultComment = '';
+            let resultTip = '';
+            let resultIconClass = 'bg-blue-100';
+            let resultIcon = '<i class="fas fa-trophy text-blue-600"></i>';
+            
+            if (matchData.winner === currentUser.uid) {
+                resultTitle = 'CHIẾN THẮNG!';
+                resultSubtitle = 'Bạn đã giành chiến thắng trong trận đấu này';
+                resultComment = `Bạn đã xuất sắc vượt qua đối thủ với ${playerResult.score.toFixed(1)} điểm so với ${opponentResult.score.toFixed(1)} điểm.`;
+                resultTip = 'Tiếp tục phát huy để giữ vững phong độ!';
+                resultIconClass = 'bg-green-100';
+                resultIcon = '<i class="fas fa-trophy text-green-600"></i>';
+                
+                document.getElementById('player-points-change').textContent = '+10 điểm';
+                document.getElementById('player-points-change').className = 'text-sm text-green-600';
+                document.getElementById('opponent-points-change').textContent = '-5 điểm';
+                document.getElementById('opponent-points-change').className = 'text-sm text-red-600';
+            } else if (matchData.winner === opponentId) {
+                resultTitle = 'THẤT BẠI';
+                resultSubtitle = 'Bạn đã thua trong trận đấu này';
+                resultComment = `Đối thủ đã vượt qua bạn với ${opponentResult.score.toFixed(1)} điểm so với ${playerResult.score.toFixed(1)} điểm của bạn.`;
+                resultTip = 'Ôn tập thêm để cải thiện kết quả trong các trận đấu tới!';
+                resultIconClass = 'bg-red-100';
+                resultIcon = '<i class="fas fa-times text-red-600"></i>';
+                
+                document.getElementById('player-points-change').textContent = '-5 điểm';
+                document.getElementById('player-points-change').className = 'text-sm text-red-600';
+                document.getElementById('opponent-points-change').textContent = '+10 điểm';
+                document.getElementById('opponent-points-change').className = 'text-sm text-green-600';
+            } else {
+                resultTitle = 'HÒA!';
+                resultSubtitle = 'Trận đấu kết thúc với tỷ số hòa';
+                resultComment = `Cả hai đều đạt ${playerResult.score.toFixed(1)} điểm trong trận đấu này.`;
+                resultTip = 'Cố gắng hơn nữa để giành chiến thắng trong các trận tới!';
+                resultIconClass = 'bg-yellow-100';
+                resultIcon = '<i class="fas fa-handshake text-yellow-600"></i>';
+                
+                document.getElementById('player-points-change').textContent = '+0 điểm';
+                document.getElementById('player-points-change').className = 'text-sm text-gray-600';
+                document.getElementById('opponent-points-change').textContent = '+0 điểm';
+                document.getElementById('opponent-points-change').className = 'text-sm text-gray-600';
+            }
+            
+            document.getElementById('result-title').textContent = resultTitle;
+            document.getElementById('result-subtitle').textContent = resultSubtitle;
+            document.getElementById('result-comment').textContent = resultComment;
+            document.getElementById('result-tip').textContent = resultTip;
+            document.getElementById('result-icon').className = `${resultIconClass} p-4 rounded-full inline-block`;
+            document.getElementById('result-icon').innerHTML = resultIcon;
+            
+            // Hiển thị chi tiết bài làm
+            displayExamFeedback(playerResult.evaluation);
+        }
+        
+        // Hiển thị chi tiết bài làm
+        function displayExamFeedback(result) {
+            const readingFeedback = document.getElementById('reading-feedback');
+            readingFeedback.innerHTML = '';
+            
+            result.reading.questions.forEach(question => {
+                const questionElement = document.createElement('div');
+                
+                // Xác định class kết quả
+                let resultClass = "result-low";
+                if (question.score >= 0.8) resultClass = "result-good";
+                else if (question.score >= 0.5) resultClass = "result-medium";
+                
+                questionElement.className = `result-card ${resultClass} mb-4`;
+                questionElement.innerHTML = `
+                    <div class="result-header">
+                        <span>Câu ${question.number}</span>
+                        <span class="font-bold">${question.score.toFixed(1)} điểm</span>
+                    </div>
+                    <div class="result-body">
+                        <p class="mb-2">${question.feedback}</p>
+                        ${question.improvement ? `
+                        <div class="mt-3 p-3 bg-gray-50 rounded-lg">
+                            <p class="font-semibold text-sm text-gray-700 mb-1">Gợi ý cải thiện:</p>
+                            <p class="text-sm">${question.improvement}</p>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+                readingFeedback.appendChild(questionElement);
+            });
+        }
+        
+        // Chơi lại
+        playAgainBtn.addEventListener('click', () => {
+            resetGame();
+            findMatchBtn.click();
+        });
+        
+        // Về trang chủ
+        backToHomeBtn.addEventListener('click', () => {
+            resetGame();
+            resultScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+        });
+        
+        // Reset trò chơi
+        function resetGame() {
+            resultScreen.classList.add('hidden');
+            waitingScreen.classList.add('hidden');
+            timeLeft = 10 * 60;
+            examData = null;
+            userAnswers = {};
+            currentMatch = null;
+            
+            // Reset các ô nhập liệu
+            document.querySelectorAll('textarea').forEach(textarea => {
+                textarea.value = '';
+            });
+        }
+    </script>
+</body>
+</html>
