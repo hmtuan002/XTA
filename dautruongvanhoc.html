@@ -651,6 +651,14 @@
         </div>
     </footer>
 
+    <script type="importmap">
+        {
+            "imports": {
+                "@google/generative-ai": "https://esm.run/@google/generative-ai"
+            }
+        }
+    </script>
+    
     <script type="module">
         import { GoogleGenerativeAI } from "@google/generative-ai";
         
@@ -744,27 +752,21 @@
             db.collection('users').doc(userId).get()
                 .then((doc) => {
                     if (doc.exists) {
-                        const data = doc.data();
-                        userPointsValue = Number(data.points) || 0; // Đảm bảo là số
+                        userPointsValue = doc.data().points || 0;
                         userPoints.textContent = userPointsValue;
                         userPointsMain.textContent = userPointsValue;
                     } else {
-                        // Tạo mới user nếu chưa tồn tại
                         db.collection('users').doc(userId).set({
                             points: 0,
                             matches: 0,
                             wins: 0,
                             losses: 0,
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }).then(() => {
-                            userPointsValue = 0;
-                            userPoints.textContent = 0;
-                            userPointsMain.textContent = 0;
                         });
+                        userPointsValue = 0;
+                        userPoints.textContent = 0;
+                        userPointsMain.textContent = 0;
                     }
-                })
-                .catch(error => {
-                    console.error("Lỗi khi tải dữ liệu người dùng:", error);
                 });
         }
 
@@ -822,10 +824,6 @@
                     });
                     
                     document.getElementById('history-section').classList.remove('hidden');
-                })
-                .catch(error => {
-                    console.error("Lỗi khi tải lịch sử thi đấu:", error);
-                    historyBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-600">Lỗi khi tải dữ liệu</td></tr>';
                 });
         }
 
@@ -848,8 +846,8 @@
                     querySnapshot.forEach((doc, index) => {
                         const data = doc.data();
                         const displayName = data.displayName || doc.id.split('@')[0];
-                        const points = Number(data.points) || 0; // Đảm bảo là số
-                        const matches = Number(data.matches) || 0; // Đảm bảo là số
+                        const points = Number(data.points) || 0; // Đảm bảo points là số
+                        const matches = Number(data.matches) || 0; // Đảm bảo matches là số
                         
                         let rankClass = 'rank-other';
                         if (index === 0) rankClass = 'rank-1';
@@ -1353,8 +1351,8 @@
             const matchData = matchDoc.data();
             
             if (Object.keys(matchData.results).length === 2) {
-                const player1 = currentMatch.players[0];
-                const player2 = currentMatch.players[1];
+                const player1 = matchData.players[0];
+                const player2 = matchData.players[1];
                 
                 const score1 = matchData.results[player1].score;
                 const score2 = matchData.results[player2].score;
@@ -1435,6 +1433,7 @@
             }
         }
 
+
         function displayMatchResult(matchData) {
             waitingScreen.classList.add('hidden');
             resultScreen.classList.remove('hidden');
@@ -1499,11 +1498,6 @@
             document.getElementById('result-icon').innerHTML = resultIcon;
             
             displayExamFeedback(playerResult.evaluation);
-            
-            // Load lại dữ liệu người dùng để cập nhật điểm
-            if (currentUser) {
-                loadUserData(currentUser.uid);
-            }
         }
 
         function displayExamFeedback(result) {
@@ -1547,7 +1541,7 @@
                     if (doc.exists) {
                         const opponentData = doc.data();
                         const opponentName = opponentData.displayName || opponentId.split('@')[0];
-                        const opponentPoints = Number(opponentData.points) || 0;
+                        const opponentPoints = opponentData.points || 0;
                         
                         document.getElementById('opponent-name').textContent = opponentName;
                         document.getElementById('opponent-points').textContent = opponentPoints;
@@ -1559,9 +1553,6 @@
                         document.getElementById('player-result-name').textContent = currentUser.email.split('@')[0];
                         document.getElementById('opponent-result-name').textContent = opponentName;
                     }
-                })
-                .catch(error => {
-                    console.error("Lỗi khi tải thông tin đối thủ:", error);
                 });
         }
 
