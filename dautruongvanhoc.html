@@ -651,7 +651,17 @@
         </div>
     </footer>
 
-    <script>
+    <script type="importmap">
+        {
+            "imports": {
+                "@google/generative-ai": "https://esm.run/@google/generative-ai"
+            }
+        }
+    </script>
+    
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+        
         // Khởi tạo Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyAu4xlTa51eZrb9b2xhWKkbOv-L8gpPDPg",
@@ -666,6 +676,11 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
+        
+        // Khởi tạo AI
+        const API_KEY = "AIzaSyAcZaIvApX_UQKWZzP4uj2J1cCseZ_zkyk";
+        const genAI = new GoogleGenerativeAI(API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-thinking-exp-01-21" });
         
         // DOM Elements
         const startScreen = document.getElementById('start-screen');
@@ -1149,36 +1164,16 @@
                 }
             `;
             
-            // Giả lập kết quả trả về từ AI (trong thực tế sẽ gọi API AI thật)
-            const mockExamData = {
-                "reading": {
-                    "passage": "Trong bài thơ 'Đây thôn Vĩ Dạ', Hàn Mặc Tử viết:\n'Sao anh không về chơi thôn Vĩ?\nNhìn nắng hàng cau nắng mới lên\nVườn ai mướt quá xanh như ngọc\nLá trúc che ngang mặt chữ điền'\n\nĐoạn thơ thể hiện bức tranh thiên nhiên thôn Vĩ với vẻ đẹp tinh khôi, trong trẻo. Hình ảnh 'nắng hàng cau' gợi lên vẻ đẹp tinh khiết của buổi sớm mai, trong khi 'vườn ai mướt quá xanh như ngọc' lại cho thấy sự tươi tốt, mượt mà của thiên nhiên.",
-                    "questions": [
-                        {
-                            "number": 1,
-                            "content": "Xác định phương thức biểu đạt chính được sử dụng trong đoạn thơ trên.",
-                            "type": "Nhận biết"
-                        },
-                        {
-                            "number": 2,
-                            "content": "Em hiểu như thế nào về hình ảnh 'nắng hàng cau nắng mới lên' trong đoạn thơ?",
-                            "type": "Thông hiểu"
-                        },
-                        {
-                            "number": 3,
-                            "content": "Phân tích hiệu quả nghệ thuật của biện pháp tu từ so sánh trong câu thơ 'Vườn ai mướt quá xanh như ngọc'.",
-                            "type": "Vận dụng thấp"
-                        },
-                        {
-                            "number": 4,
-                            "content": "Qua đoạn thơ trên, em rút ra được thông điệp gì về cách nhìn nhận vẻ đẹp của thiên nhiên?",
-                            "type": "Vận dụng cao"
-                        }
-                    ]
-                }
-            };
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
             
-            return mockExamData;
+            // Tìm và trích xuất JSON từ phản hồi
+            const jsonStart = text.indexOf('{');
+            const jsonEnd = text.lastIndexOf('}') + 1;
+            const jsonString = text.substring(jsonStart, jsonEnd);
+            
+            return JSON.parse(jsonString);
         }
 
         function displayExam(data) {
@@ -1276,41 +1271,63 @@
         }
 
         async function evaluateExam(examData, userAnswers) {
-            // Giả lập kết quả chấm điểm
-            const mockEvaluation = {
-                "reading": {
-                    "totalScore": 3.5,
-                    "questions": [
-                        {
-                            "number": 1,
-                            "score": 1.0,
-                            "feedback": "Trả lời chính xác phương thức biểu đạt là biểu cảm",
-                            "improvement": "Nên trình bày rõ ràng hơn"
-                        },
-                        {
-                            "number": 2,
-                            "score": 0.75,
-                            "feedback": "Hiểu được ý nghĩa hình ảnh nhưng giải thích chưa sâu",
-                            "improvement": "Cần phân tích kỹ hơn về hình ảnh thơ"
-                        },
-                        {
-                            "number": 3,
-                            "score": 0.75,
-                            "feedback": "Phân tích được biện pháp so sánh nhưng chưa chỉ ra hiệu quả nghệ thuật",
-                            "improvement": "Nên liên hệ với nội dung đoạn thơ"
-                        },
-                        {
-                            "number": 4,
-                            "score": 1.0,
-                            "feedback": "Rút ra được thông điệp sâu sắc về thiên nhiên",
-                            "improvement": null
-                        }
-                    ]
-                },
-                "totalScore": 3.5
-            };
+            const prompt = `
+                Bạn hãy chấm điểm bài thi Đọc hiểu Ngữ Văn dựa trên:
+                
+                1. Đề thi:
+                ${JSON.stringify(examData, null, 2)}
+                
+                2. Bài làm của học sinh:
+                ${JSON.stringify(userAnswers, null, 2)}
+                
+                Yêu cầu chấm điểm:
+                - Chấm điểm theo thang điểm 4.0
+                - Đưa ra nhận xét ngắn gọn, khách quan cho từng câu
+                - Gợi ý cách cải thiện (nếu cần)
+                - Tính tổng điểm
+                
+                Tiêu chí chấm điểm:
+                * Câu hỏi nhận biết (1 điểm):
+                - Đúng/sai rõ ràng
+                
+                * Câu hỏi thông hiểu (1 điểm):
+                - Đánh giá mức độ hiểu vấn đề
+                
+                * Câu hỏi vận dụng thấp (1 điểm):
+                - Khả năng phân tích, đánh giá
+                
+                * Câu hỏi vận dụng cao (1 điểm):
+                - Khả năng liên hệ, rút ra bài học
+                
+                Trả lời bằng JSON theo định dạng sau:
+                {
+                    "reading": {
+                        "totalScore": 4.0,
+                        "questions": [
+                            {
+                                "number": 1,
+                                "score": 1.0,
+                                "feedback": "Nhận xét...",
+                                "improvement": "Gợi ý cải thiện..."
+                            },
+                            ...
+                        ]
+                    },
+                    "totalScore": 4.0,
+                    "overallFeedback": "Nhận xét tổng quan..."
+                }
+            `;
             
-            return mockEvaluation;
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+            
+            // Tìm và trích xuất JSON từ phản hồi
+            const jsonStart = text.indexOf('{');
+            const jsonEnd = text.lastIndexOf('}') + 1;
+            const jsonString = text.substring(jsonStart, jsonEnd);
+            
+            return JSON.parse(jsonString);
         }
 
         async function updateMatchResult(result) {
