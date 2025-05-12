@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap" rel="stylesheet">
-    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -652,17 +651,7 @@
         </div>
     </footer>
 
-    <script type="importmap">
-        {
-            "imports": {
-                "@google/generative-ai": "https://esm.run/@google/generative-ai"
-            }
-        }
-    </script>
-    
-    <script type="module">
-        import { GoogleGenerativeAI } from "@google/generative-ai";
-        
+    <script>
         // Khởi tạo Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyAu4xlTa51eZrb9b2xhWKkbOv-L8gpPDPg",
@@ -677,11 +666,6 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
-        
-        // Khởi tạo AI
-        const API_KEY = "AIzaSyAcZaIvApX_UQKWZzP4uj2J1cCseZ_zkyk";
-        const genAI = new GoogleGenerativeAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-thinking-exp-01-21" });
         
         // DOM Elements
         const startScreen = document.getElementById('start-screen');
@@ -708,15 +692,19 @@
         
         // Biến toàn cục
         let examData = null;
-        let timeLeft = 10 * 60; // 10 phút tính bằng giây
+        let timeLeft = 10 * 60;
         let timerInterval = null;
         let userAnswers = {};
         let currentMatch = null;
         let currentUser = null;
         let userPointsValue = 0;
-        let matchListener = null;
+        let matchmakingListener = null;
+        let currentMatchmakingId = null;
+        let opponentCheckInterval = null;
+        let matchmakingTimeout = null;
+        let pingInterval = null;
         
-        // Xử lý đăng nhập/đăng xuất
+        // ==================== AUTHENTICATION ==================== //
         loginBtn.addEventListener('click', () => {
             window.location.href = 'login.html';
         });
@@ -727,35 +715,24 @@
             });
         });
 
-        // Kiểm tra trạng thái đăng nhập
         auth.onAuthStateChanged((user) => {
             if (user) {
-                // Đã đăng nhập
                 currentUser = user;
                 userInfo.classList.remove('hidden');
                 loginBtn.classList.add('hidden');
                 userName.textContent = user.email.split('@')[0];
-                
-                // Load thông tin người dùng
                 loadUserData(user.uid);
-                
-                // Load lịch sử thi đấu
                 loadMatchHistory(user.uid);
-                
-                // Load bảng xếp hạng
                 loadLeaderboard();
             } else {
-                // Chưa đăng nhập
                 currentUser = null;
                 userInfo.classList.add('hidden');
                 loginBtn.classList.remove('hidden');
-                
-                // Ẩn phần lịch sử
                 document.getElementById('history-section').classList.add('hidden');
             }
         });
 
-        // Hàm load thông tin người dùng
+        // ==================== USER DATA ==================== //
         function loadUserData(userId) {
             db.collection('users').doc(userId).get()
                 .then((doc) => {
@@ -764,7 +741,6 @@
                         userPoints.textContent = userPointsValue;
                         userPointsMain.textContent = userPointsValue;
                     } else {
-                        // Tạo tài khoản mới nếu chưa có
                         db.collection('users').doc(userId).set({
                             points: 0,
                             matches: 0,
@@ -772,18 +748,13 @@
                             losses: 0,
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
-                        
                         userPointsValue = 0;
                         userPoints.textContent = 0;
                         userPointsMain.textContent = 0;
                     }
-                })
-                .catch((error) => {
-                    console.error("Lỗi khi tải thông tin người dùng:", error);
                 });
         }
 
-        // Hàm load lịch sử thi đấu
         function loadMatchHistory(userId) {
             const historyBody = document.getElementById('history-body');
             historyBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center">Đang tải dữ liệu...</td></tr>';
@@ -805,25 +776,19 @@
                         const data = doc.data();
                         const date = data.timestamp.toDate();
                         const dateStr = date.toLocaleDateString('vi-VN');
-                        
-                        // Xác định đối thủ
                         const opponentId = data.players.find(id => id !== userId);
                         const opponentDoc = await db.collection('users').doc(opponentId).get();
                         const opponentName = opponentDoc.exists ? opponentDoc.data().displayName || opponentId : opponentId;
-                        
-                        // Xác định kết quả
-                        const isWinner = data.winner === userId;
-                        const isDraw = data.winner === 'draw';
                         
                         let resultText = '';
                         let resultClass = '';
                         let pointsChange = '';
                         
-                        if (isDraw) {
+                        if (data.winner === 'draw') {
                             resultText = 'Hòa';
                             resultClass = 'text-gray-600';
                             pointsChange = '+0';
-                        } else if (isWinner) {
+                        } else if (data.winner === userId) {
                             resultText = 'Thắng';
                             resultClass = 'text-green-600';
                             pointsChange = '+10';
@@ -843,16 +808,10 @@
                         historyBody.appendChild(row);
                     });
                     
-                    // Hiển thị phần lịch sử
                     document.getElementById('history-section').classList.remove('hidden');
-                })
-                .catch((error) => {
-                    console.error("Lỗi khi tải lịch sử:", error);
-                    historyBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-600">Có lỗi khi tải dữ liệu</td></tr>';
                 });
         }
 
-        // Hàm load bảng xếp hạng
         function loadLeaderboard() {
             const leaderboardBody = document.getElementById('leaderboard-body');
             leaderboardBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center">Đang tải dữ liệu...</td></tr>';
@@ -893,15 +852,13 @@
                         `;
                         leaderboardBody.appendChild(row);
                     });
-                })
-                .catch((error) => {
-                    console.error("Lỗi khi tải bảng xếp hạng:", error);
-                    leaderboardBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-600">Có lỗi khi tải dữ liệu</td></tr>';
                 });
         }
 
-        // Tìm đối thủ
-        findMatchBtn.addEventListener('click', () => {
+        // ==================== MATCHMAKING SYSTEM ==================== //
+        findMatchBtn.addEventListener('click', startMatchmaking);
+
+        async function startMatchmaking() {
             if (!currentUser) {
                 alert("Vui lòng đăng nhập để thi đấu");
                 return;
@@ -910,144 +867,227 @@
             startScreen.classList.add('hidden');
             matchmakingScreen.classList.remove('hidden');
             
-            // Thay thế hàm findMatch bằng code này
-            async function findMatch() {
-                if (!currentUser) {
-                    alert("Vui lòng đăng nhập để thi đấu");
-                    return;
-                }
-
-                startScreen.classList.add('hidden');
-                matchmakingScreen.classList.remove('hidden');
-            
-                // Thêm vào hàng đợi matchmaking
+            try {
                 const matchmakingRef = await db.collection('matchmaking').add({
                     userId: currentUser.uid,
                     points: userPointsValue,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    status: 'waiting'
+                    status: 'waiting',
+                    lastPing: firebase.firestore.FieldValue.serverTimestamp()
                 });
-
-                // Lắng nghe đối thủ phù hợp
-                const unsubscribe = db.collection('matchmaking')
-                    .where('userId', '!=', currentUser.uid)
-                    .where('status', '==', 'waiting')
-                    .orderBy('timestamp')
-                    .limit(1)
-                    .onSnapshot(async (snapshot) => {
-                        if (!snapshot.empty) {
-                            const opponentDoc = snapshot.docs[0];
-                            const opponentData = opponentDoc.data();
-
-                            // Tạo trận đấu mới
-                            const matchRef = await db.collection('matches').add({
-                                players: [currentUser.uid, opponentData.userId],
-                                status: 'pending',
-                                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-
-                            // Cập nhật trạng thái cả hai người chơi
-                            const batch = db.batch();
-                            batch.update(matchmakingRef, { status: 'matched', matchId: matchRef.id });
-                            batch.update(opponentDoc.ref, { status: 'matched', matchId: matchRef.id });
-                            await batch.commit();
-
-                            // Lưu thông tin trận đấu
-                            currentMatch = {
-                                id: matchRef.id,
-                                players: [currentUser.uid, opponentData.userId],
-                                status: 'pending'
-                            };
-
-                            // Hiển thị thông tin đối thủ
-                            displayOpponentInfo(opponentData.userId);
-                            matchmakingScreen.classList.add('hidden');
-                            opponentFoundScreen.classList.remove('hidden');
-
-                            // Dừng lắng nghe
-                            unsubscribe();
+                
+                currentMatchmakingId = matchmakingRef.id;
+                setupMatchmakingListener();
+                
+                opponentCheckInterval = setInterval(checkForOpponent, 5000);
+                
+                pingInterval = setInterval(async () => {
+                    if (currentMatchmakingId) {
+                        await db.collection('matchmaking').doc(currentMatchmakingId).update({
+                            lastPing: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    } else {
+                        clearInterval(pingInterval);
+                    }
+                }, 15000);
+                
+                matchmakingTimeout = setTimeout(async () => {
+                    if (currentMatchmakingId) {
+                        const doc = await db.collection('matchmaking').doc(currentMatchmakingId).get();
+                        if (doc.exists && doc.data().status === 'waiting') {
+                            await cancelMatchmaking();
+                            alert('Không tìm thấy đối thủ phù hợp. Vui lòng thử lại sau.');
                         }
-                    });
-
-                // Hủy tìm kiếm sau 60s nếu không tìm thấy
-                setTimeout(() => {
-                    if (!currentMatch) {
-                        unsubscribe();
-                        cancelMatchmaking(matchmakingRef);
                     }
                 }, 60000);
-            });
-        });
+                
+            } catch (error) {
+                console.error("Lỗi khi bắt đầu tìm trận:", error);
+                cancelMatchmaking();
+                alert("Có lỗi xảy ra khi tìm đối thủ. Vui lòng thử lại.");
+            }
+        }
 
-        // Hủy tìm kiếm đối thủ
-        cancelMatchBtn.addEventListener('click', () => {
-            cancelMatchmaking();
-        });
+        function setupMatchmakingListener() {
+            matchmakingListener = db.collection('matchmaking')
+                .doc(currentMatchmakingId)
+                .onSnapshot(async (doc) => {
+                    const data = doc.data();
+                    if (!data) return;
 
-        function cancelMatchmaking(matchmakingId) {
-            if (matchListener) matchListener();
+                    if (data.status === 'matched' && data.matchId) {
+                        await handleMatchFound(data.matchId);
+                    }
+                    
+                    if (data.status === 'timeout') {
+                        await handleMatchmakingTimeout();
+                    }
+                    
+                    if (data.status === 'cancelled') {
+                        await handleMatchmakingCancelled();
+                    }
+                });
+        }
+
+        async function checkForOpponent() {
+            if (!currentMatchmakingId) return;
+
+            try {
+                const currentPlayerDoc = await db.collection('matchmaking').doc(currentMatchmakingId).get();
+                const currentPlayerData = currentPlayerDoc.data();
+                
+                if (!currentPlayerData || currentPlayerData.status !== 'waiting') return;
+
+                const now = new Date();
+                const timeThreshold = new Date(now.getTime() - 15000);
+                
+                const snapshot = await db.collection('matchmaking')
+                    .where('userId', '!=', currentUser.uid)
+                    .where('status', '==', 'waiting')
+                    .where('lastPing', '>', timeThreshold)
+                    .orderBy('lastPing', 'desc')
+                    .limit(1)
+                    .get();
+
+                if (snapshot.empty) return;
+
+                const opponentDoc = snapshot.docs[0];
+                const opponentData = opponentDoc.data();
+
+                const pointsDiff = Math.abs(currentPlayerData.points - opponentData.points);
+                const maxPointsDiff = 100;
+                
+                if (pointsDiff > maxPointsDiff) return;
+
+                const matchRef = await db.collection('matches').add({
+                    players: [currentUser.uid, opponentData.userId],
+                    playerPoints: {
+                        [currentUser.uid]: currentPlayerData.points,
+                        [opponentData.userId]: opponentData.points
+                    },
+                    status: 'pending',
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                const batch = db.batch();
+                
+                batch.update(db.collection('matchmaking').doc(currentMatchmakingId), {
+                    status: 'matched',
+                    matchId: matchRef.id
+                });
+                
+                batch.update(db.collection('matchmaking').doc(opponentDoc.id), {
+                    status: 'matched',
+                    matchId: matchRef.id
+                });
+                
+                await batch.commit();
+
+            } catch (error) {
+                console.error("Lỗi khi kiểm tra đối thủ:", error);
+            }
+        }
+
+        async function handleMatchFound(matchId) {
+            if (opponentCheckInterval) clearInterval(opponentCheckInterval);
+            if (matchmakingTimeout) clearTimeout(matchmakingTimeout);
             
-            if (matchmakingId) {
-                db.collection('matchmaking').doc(matchmakingId).delete();
+            const matchDoc = await db.collection('matches').doc(matchId).get();
+            currentMatch = {
+                id: matchDoc.id,
+                ...matchDoc.data()
+            };
+            
+            displayOpponentInfo();
+            
+            matchmakingScreen.classList.add('hidden');
+            opponentFoundScreen.classList.remove('hidden');
+            
+            if (matchmakingListener) {
+                matchmakingListener();
+                matchmakingListener = null;
+            }
+        }
+
+        cancelMatchBtn.addEventListener('click', cancelMatchmaking);
+
+        async function cancelMatchmaking() {
+            if (opponentCheckInterval) clearInterval(opponentCheckInterval);
+            if (matchmakingTimeout) clearTimeout(matchmakingTimeout);
+            if (pingInterval) clearInterval(pingInterval);
+            
+            if (currentMatchmakingId) {
+                try {
+                    await db.collection('matchmaking').doc(currentMatchmakingId).update({
+                        status: 'cancelled'
+                    });
+                } catch (error) {
+                    console.error("Lỗi khi hủy matchmaking:", error);
+                }
+                currentMatchmakingId = null;
+            }
+            
+            if (matchmakingListener) {
+                matchmakingListener();
+                matchmakingListener = null;
             }
             
             matchmakingScreen.classList.add('hidden');
             startScreen.classList.remove('hidden');
-            currentMatch = null;
         }
 
-        // Hiển thị thông tin đối thủ
-        function displayOpponentInfo() {
-            const opponentId = currentMatch.players.find(id => id !== currentUser.uid);
+        async function handleMatchmakingTimeout() {
+            if (opponentCheckInterval) clearInterval(opponentCheckInterval);
+            if (matchmakingTimeout) clearTimeout(matchmakingTimeout);
+            if (pingInterval) clearInterval(pingInterval);
             
-            db.collection('users').doc(opponentId).get()
-                .then((doc) => {
-                    if (doc.exists) {
-                        const opponentData = doc.data();
-                        const opponentName = opponentData.displayName || opponentId.split('@')[0];
-                        const opponentPoints = opponentData.points || 0;
-                        
-                        document.getElementById('opponent-name').textContent = opponentName;
-                        document.getElementById('opponent-points').textContent = opponentPoints;
-                        document.getElementById('opponent-name-exam').textContent = opponentName;
-                        
-                        document.getElementById('player-name').textContent = currentUser.email.split('@')[0];
-                        document.getElementById('player-points').textContent = userPointsValue;
-                        
-                        // Cập nhật cho màn hình kết quả
-                        document.getElementById('player-result-name').textContent = currentUser.email.split('@')[0];
-                        document.getElementById('opponent-result-name').textContent = opponentName;
-                    }
-                });
+            currentMatchmakingId = null;
+            
+            if (matchmakingListener) {
+                matchmakingListener();
+                matchmakingListener = null;
+            }
+            
+            matchmakingScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+            alert('Không tìm thấy đối thủ phù hợp. Vui lòng thử lại sau.');
         }
 
-        // Bắt đầu trận đấu
+        async function handleMatchmakingCancelled() {
+            if (opponentCheckInterval) clearInterval(opponentCheckInterval);
+            if (matchmakingTimeout) clearTimeout(matchmakingTimeout);
+            if (pingInterval) clearInterval(pingInterval);
+            
+            currentMatchmakingId = null;
+            
+            if (matchmakingListener) {
+                matchmakingListener();
+                matchmakingListener = null;
+            }
+            
+            matchmakingScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+        }
+
+        // ==================== BATTLE SYSTEM ==================== //
         startBattleBtn.addEventListener('click', async () => {
             opponentFoundScreen.classList.add('hidden');
             examScreen.classList.remove('hidden');
             
-            // Hiển thị loading
             startBattleBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Đang tạo đề thi...';
             startBattleBtn.disabled = true;
             
             try {
-                // Tạo đề thi bằng AI
                 examData = await generateExam();
-                
-                // Hiển thị đề thi
                 displayExam(examData);
-                
-                // Bắt đầu đếm ngược
                 startTimer();
                 
-                // Cập nhật trạng thái trận đấu
                 await db.collection('matches').doc(currentMatch.id).update({
                     status: 'in_progress',
                     examData: examData,
                     startTime: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 
-                // Lắng nghe kết quả trận đấu
                 listenForMatchResult();
             } catch (error) {
                 console.error("Lỗi khi bắt đầu trận đấu:", error);
@@ -1059,18 +1099,15 @@
             }
         });
 
-        // Lắng nghe kết quả trận đấu
         function listenForMatchResult() {
             db.collection('matches').doc(currentMatch.id)
                 .onSnapshot((doc) => {
                     const matchData = doc.data();
                     
                     if (matchData.status === 'completed') {
-                        // Nếu người chơi đã nộp bài, hiển thị màn hình chờ
                         if (userAnswers.submitted) {
                             displayMatchResult(matchData);
                         } else {
-                            // Nếu đối thủ đã nộp bài trước
                             examScreen.classList.add('hidden');
                             waitingScreen.classList.remove('hidden');
                         }
@@ -1078,32 +1115,33 @@
                 });
         }
 
-        // Tạo đề thi bằng AI
         async function generateExam() {
+            // Tạo prompt phù hợp cho môn Văn học
             const prompt = `
-                Bạn hãy tạo một đề thi Đọc hiểu Ngữ Văn THPT Quốc Gia theo cấu trúc sau:
+                Bạn hãy tạo một đề thi Đọc hiểu Ngữ Văn THPT Quốc Gia với các yêu cầu sau:
                 
-                I. ĐỌC HIỂU (4 điểm)
-                - Một đoạn văn/đoạn thơ khoảng 150-200 từ (có thể trích từ tác phẩm văn học Việt Nam hoặc nước ngoài)
-                - 4-6 câu hỏi đọc hiểu về đoạn văn đó, bao gồm các dạng:
-                  + Câu hỏi nhận biết (phương thức biểu đạt, phong cách ngôn ngữ...)
-                  + Câu hỏi thông hiểu (giải thích từ ngữ, nội dung đoạn văn...)
-                  + Câu hỏi vận dụng (liên hệ thực tế, rút ra thông điệp...)
+                1. Đoạn văn/đoạn thơ:
+                - Dài khoảng 150-200 từ
+                - Có thể trích từ tác phẩm văn học Việt Nam hoặc nước ngoài
+                - Có giá trị văn học và phù hợp với học sinh THPT
                 
-                Yêu cầu:
-                - Đề thi phải bám sát cấu trúc và mức độ đề thi thật
-                - Câu hỏi rõ ràng, không đánh đố
-                - Đoạn văn đọc hiểu phải có giá trị văn học và phù hợp với học sinh THPT
+                2. Câu hỏi đọc hiểu:
+                - Gồm 4 câu hỏi
+                - Phân loại theo các mức độ:
+                  + Câu 1: Nhận biết (phương thức biểu đạt, phong cách ngôn ngữ...)
+                  + Câu 2: Thông hiểu (giải thích từ ngữ, nội dung...)
+                  + Câu 3: Vận dụng thấp (phân tích, đánh giá...)
+                  + Câu 4: Vận dụng cao (liên hệ, rút ra bài học...)
                 
-                Trả lời bằng JSON theo định dạng sau:
+                Trả lời bằng JSON theo định dạng:
                 {
                     "reading": {
-                        "passage": "Đoạn văn/đoạn thơ...",
+                        "passage": "Nội dung đoạn văn...",
                         "questions": [
                             {
                                 "number": 1,
                                 "content": "Nội dung câu hỏi",
-                                "type": "Nhận biết/Thông hiểu/Vận dụng"
+                                "type": "Nhận biết"
                             },
                             ...
                         ]
@@ -1111,27 +1149,45 @@
                 }
             `;
             
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
+            // Giả lập kết quả trả về từ AI (trong thực tế sẽ gọi API AI thật)
+            const mockExamData = {
+                "reading": {
+                    "passage": "Trong bài thơ 'Đây thôn Vĩ Dạ', Hàn Mặc Tử viết:\n'Sao anh không về chơi thôn Vĩ?\nNhìn nắng hàng cau nắng mới lên\nVườn ai mướt quá xanh như ngọc\nLá trúc che ngang mặt chữ điền'\n\nĐoạn thơ thể hiện bức tranh thiên nhiên thôn Vĩ với vẻ đẹp tinh khôi, trong trẻo. Hình ảnh 'nắng hàng cau' gợi lên vẻ đẹp tinh khiết của buổi sớm mai, trong khi 'vườn ai mướt quá xanh như ngọc' lại cho thấy sự tươi tốt, mượt mà của thiên nhiên.",
+                    "questions": [
+                        {
+                            "number": 1,
+                            "content": "Xác định phương thức biểu đạt chính được sử dụng trong đoạn thơ trên.",
+                            "type": "Nhận biết"
+                        },
+                        {
+                            "number": 2,
+                            "content": "Em hiểu như thế nào về hình ảnh 'nắng hàng cau nắng mới lên' trong đoạn thơ?",
+                            "type": "Thông hiểu"
+                        },
+                        {
+                            "number": 3,
+                            "content": "Phân tích hiệu quả nghệ thuật của biện pháp tu từ so sánh trong câu thơ 'Vườn ai mướt quá xanh như ngọc'.",
+                            "type": "Vận dụng thấp"
+                        },
+                        {
+                            "number": 4,
+                            "content": "Qua đoạn thơ trên, em rút ra được thông điệp gì về cách nhìn nhận vẻ đẹp của thiên nhiên?",
+                            "type": "Vận dụng cao"
+                        }
+                    ]
+                }
+            };
             
-            // Tìm và trích xuất JSON từ phản hồi
-            const jsonStart = text.indexOf('{');
-            const jsonEnd = text.lastIndexOf('}') + 1;
-            const jsonString = text.substring(jsonStart, jsonEnd);
-            
-            return JSON.parse(jsonString);
+            return mockExamData;
         }
-        
-        // Hiển thị đề thi lên giao diện
+
         function displayExam(data) {
-            // Phần đọc hiểu
             document.getElementById('reading-passage').textContent = data.reading.passage;
             
             const questionsContainer = document.getElementById('reading-questions');
             questionsContainer.innerHTML = '';
             
-            data.reading.questions.forEach((question, index) => {
+            data.reading.questions.forEach((question) => {
                 const questionElement = document.createElement('div');
                 questionElement.className = 'question-card p-5';
                 questionElement.innerHTML = `
@@ -1142,8 +1198,7 @@
                 questionsContainer.appendChild(questionElement);
             });
         }
-        
-        // Bắt đầu đếm ngược
+
         function startTimer() {
             updateTimerDisplay();
             timerInterval = setInterval(() => {
@@ -1157,61 +1212,45 @@
                 }
             }, 1000);
         }
-        
-        // Cập nhật hiển thị đồng hồ
+
         function updateTimerDisplay() {
             const minutes = Math.floor(timeLeft / 60);
             const seconds = timeLeft % 60;
             timer.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
             
-            // Đổi màu và hiệu ứng khi thời gian sắp hết
             timer.className = 'timer text-lg';
-            if (timeLeft <= 60) { // 1 phút cuối
+            if (timeLeft <= 60) {
                 timer.classList.add('timer-warning');
             }
-            if (timeLeft <= 30) { // 30 giây cuối
+            if (timeLeft <= 30) {
                 timer.classList.remove('timer-warning');
                 timer.classList.add('timer-danger');
             }
         }
-        
-        // Dừng đồng hồ
+
         function stopTimer() {
             clearInterval(timerInterval);
         }
-        
-        // Nộp bài thi
-        submitExamBtn.addEventListener('click', () => {
-            submitExam();
-        });
-        
+
+        submitExamBtn.addEventListener('click', submitExam);
+
         async function submitExam() {
-            // Hiển thị loading
             submitExamBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Đang chấm điểm...';
             submitExamBtn.disabled = true;
             
             try {
-                // Thu thập câu trả lời
                 collectAnswers();
-                
-                // Đánh dấu đã nộp bài
                 userAnswers.submitted = true;
                 
-                // Chấm điểm bằng AI
                 const result = await evaluateExam(examData, userAnswers);
-                
-                // Cập nhật kết quả vào trận đấu
                 await updateMatchResult(result);
                 
-                // Kiểm tra xem đối thủ đã nộp bài chưa
                 const matchDoc = await db.collection('matches').doc(currentMatch.id).get();
                 const matchData = matchDoc.data();
                 
                 if (matchData.status === 'completed') {
-                    // Nếu đối thủ đã nộp bài, hiển thị kết quả
                     displayMatchResult(matchData);
                 } else {
-                    // Nếu chưa, hiển thị màn hình chờ
                     examScreen.classList.add('hidden');
                     waitingScreen.classList.remove('hidden');
                 }
@@ -1223,78 +1262,60 @@
                 submitExamBtn.disabled = false;
             }
         }
-        
-        // Thu thập câu trả lời của thí sinh
+
         function collectAnswers() {
             userAnswers = {
                 reading: {},
                 submitted: false
             };
             
-            // Thu thập câu trả lời phần đọc hiểu
             examData.reading.questions.forEach(question => {
                 const answerElement = document.getElementById(`reading-answer-${question.number}`);
                 userAnswers.reading[question.number] = answerElement.value;
             });
         }
-        
-        // Chấm điểm bài thi bằng AI
+
         async function evaluateExam(examData, userAnswers) {
-            const prompt = `
-                Bạn hãy chấm điểm bài thi Đọc hiểu Ngữ Văn THPT Quốc Gia dựa trên:
-                
-                1. Đề thi:
-                ${JSON.stringify(examData, null, 2)}
-                
-                2. Bài làm của học sinh:
-                ${JSON.stringify(userAnswers, null, 2)}
-                
-                Yêu cầu chấm điểm:
-                - Chấm điểm theo thang điểm chuẩn của Bộ GD&ĐT (tổng 4 điểm)
-                - Đưa ra nhận xét ngắn gọn, khách quan cho từng câu
-                - Tính tổng điểm
-                
-                Tiêu chí chấm điểm:
-                * Phần đọc hiểu:
-                - Câu hỏi nhận biết: đúng/sai rõ ràng (0.5-1 điểm)
-                - Câu hỏi thông hiểu: đánh giá mức độ hiểu vấn đề (0.5-1 điểm)
-                - Câu hỏi vận dụng: đánh giá khả năng phân tích, liên hệ (0.5-1 điểm)
-                
-                Trả lời bằng JSON theo định dạng sau:
-                {
-                    "reading": {
-                        "totalScore": 3.5,
-                        "questions": [
-                            {
-                                "number": 1,
-                                "score": 0.5,
-                                "feedback": "Nhận xét...",
-                                "improvement": "Gợi ý cải thiện..."
-                            },
-                            ...
-                        ]
-                    },
-                    "totalScore": 3.5
-                }
-            `;
+            // Giả lập kết quả chấm điểm
+            const mockEvaluation = {
+                "reading": {
+                    "totalScore": 3.5,
+                    "questions": [
+                        {
+                            "number": 1,
+                            "score": 1.0,
+                            "feedback": "Trả lời chính xác phương thức biểu đạt là biểu cảm",
+                            "improvement": "Nên trình bày rõ ràng hơn"
+                        },
+                        {
+                            "number": 2,
+                            "score": 0.75,
+                            "feedback": "Hiểu được ý nghĩa hình ảnh nhưng giải thích chưa sâu",
+                            "improvement": "Cần phân tích kỹ hơn về hình ảnh thơ"
+                        },
+                        {
+                            "number": 3,
+                            "score": 0.75,
+                            "feedback": "Phân tích được biện pháp so sánh nhưng chưa chỉ ra hiệu quả nghệ thuật",
+                            "improvement": "Nên liên hệ với nội dung đoạn thơ"
+                        },
+                        {
+                            "number": 4,
+                            "score": 1.0,
+                            "feedback": "Rút ra được thông điệp sâu sắc về thiên nhiên",
+                            "improvement": null
+                        }
+                    ]
+                },
+                "totalScore": 3.5
+            };
             
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
-            
-            // Tìm và trích xuất JSON từ phản hồi
-            const jsonStart = text.indexOf('{');
-            const jsonEnd = text.lastIndexOf('}') + 1;
-            const jsonString = text.substring(jsonStart, jsonEnd);
-            
-            return JSON.parse(jsonString);
+            return mockEvaluation;
         }
-        
-        // Cập nhật kết quả trận đấu
+
         async function updateMatchResult(result) {
             const matchRef = db.collection('matches').doc(currentMatch.id);
             
-            // Thêm kết quả của người chơi hiện tại
             await matchRef.update({
                 [`results.${currentUser.uid}`]: {
                     score: result.totalScore,
@@ -1303,12 +1324,10 @@
                 }
             });
             
-            // Kiểm tra xem cả 2 người chơi đã nộp bài chưa
             const matchDoc = await matchRef.get();
             const matchData = matchDoc.data();
             
             if (Object.keys(matchData.results).length === 2) {
-                // Xác định người thắng cuộc
                 const player1 = matchData.players[0];
                 const player2 = matchData.players[1];
                 
@@ -1319,26 +1338,22 @@
                 if (score1 > score2) winner = player1;
                 else if (score2 > score1) winner = player2;
                 
-                // Cập nhật trạng thái trận đấu
                 await matchRef.update({
                     status: 'completed',
                     winner: winner,
                     endTime: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 
-                // Cập nhật điểm cho người chơi
                 await updatePlayerPoints(winner);
             }
         }
-        
-        // Cập nhật điểm người chơi
+
         async function updatePlayerPoints(winner) {
             const player1 = currentMatch.players[0];
             const player2 = currentMatch.players[1];
             
             const batch = db.batch();
             
-            // Cập nhật thống kê cho người chơi 1
             const player1Ref = db.collection('users').doc(player1);
             batch.update(player1Ref, {
                 matches: firebase.firestore.FieldValue.increment(1),
@@ -1347,7 +1362,6 @@
                 losses: firebase.firestore.FieldValue.increment(winner === player2 ? 1 : 0)
             });
             
-            // Cập nhật thống kê cho người chơi 2
             const player2Ref = db.collection('users').doc(player2);
             batch.update(player2Ref, {
                 matches: firebase.firestore.FieldValue.increment(1),
@@ -1358,16 +1372,13 @@
             
             await batch.commit();
             
-            // Cập nhật điểm hiển thị
             if (currentUser) {
                 loadUserData(currentUser.uid);
             }
             
-            // Cập nhật bảng xếp hạng
             loadLeaderboard();
         }
-        
-        // Hiển thị kết quả trận đấu
+
         function displayMatchResult(matchData) {
             waitingScreen.classList.add('hidden');
             resultScreen.classList.remove('hidden');
@@ -1376,11 +1387,9 @@
             const opponentId = currentMatch.players.find(id => id !== currentUser.uid);
             const opponentResult = matchData.results[opponentId];
             
-            // Hiển thị điểm số
             document.getElementById('player-score').textContent = playerResult.score.toFixed(1);
             document.getElementById('opponent-score').textContent = opponentResult.score.toFixed(1);
             
-            // Xác định kết quả
             let resultTitle = '';
             let resultSubtitle = '';
             let resultComment = '';
@@ -1433,11 +1442,9 @@
             document.getElementById('result-icon').className = `${resultIconClass} p-4 rounded-full inline-block`;
             document.getElementById('result-icon').innerHTML = resultIcon;
             
-            // Hiển thị chi tiết bài làm
             displayExamFeedback(playerResult.evaluation);
         }
-        
-        // Hiển thị chi tiết bài làm
+
         function displayExamFeedback(result) {
             const readingFeedback = document.getElementById('reading-feedback');
             readingFeedback.innerHTML = '';
@@ -1445,7 +1452,6 @@
             result.reading.questions.forEach(question => {
                 const questionElement = document.createElement('div');
                 
-                // Xác định class kết quả
                 let resultClass = "result-low";
                 if (question.score >= 0.8) resultClass = "result-good";
                 else if (question.score >= 0.5) resultClass = "result-medium";
@@ -1469,21 +1475,43 @@
                 readingFeedback.appendChild(questionElement);
             });
         }
-        
-        // Chơi lại
+
+        // ==================== UTILITIES ==================== //
+        function displayOpponentInfo() {
+            if (!currentMatch) return;
+            
+            const opponentId = currentMatch.players.find(id => id !== currentUser.uid);
+            db.collection('users').doc(opponentId).get()
+                .then((doc) => {
+                    if (doc.exists) {
+                        const opponentData = doc.data();
+                        const opponentName = opponentData.displayName || opponentId.split('@')[0];
+                        const opponentPoints = opponentData.points || 0;
+                        
+                        document.getElementById('opponent-name').textContent = opponentName;
+                        document.getElementById('opponent-points').textContent = opponentPoints;
+                        document.getElementById('opponent-name-exam').textContent = opponentName;
+                        
+                        document.getElementById('player-name').textContent = currentUser.email.split('@')[0];
+                        document.getElementById('player-points').textContent = userPointsValue;
+                        
+                        document.getElementById('player-result-name').textContent = currentUser.email.split('@')[0];
+                        document.getElementById('opponent-result-name').textContent = opponentName;
+                    }
+                });
+        }
+
         playAgainBtn.addEventListener('click', () => {
             resetGame();
             findMatchBtn.click();
         });
-        
-        // Về trang chủ
+
         backToHomeBtn.addEventListener('click', () => {
             resetGame();
             resultScreen.classList.add('hidden');
             startScreen.classList.remove('hidden');
         });
-        
-        // Reset trò chơi
+
         function resetGame() {
             resultScreen.classList.add('hidden');
             waitingScreen.classList.add('hidden');
@@ -1492,7 +1520,6 @@
             userAnswers = {};
             currentMatch = null;
             
-            // Reset các ô nhập liệu
             document.querySelectorAll('textarea').forEach(textarea => {
                 textarea.value = '';
             });
