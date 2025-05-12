@@ -651,14 +651,6 @@
         </div>
     </footer>
 
-    <script type="importmap">
-        {
-            "imports": {
-                "@google/generative-ai": "https://esm.run/@google/generative-ai"
-            }
-        }
-    </script>
-    
     <script type="module">
         import { GoogleGenerativeAI } from "@google/generative-ai";
         
@@ -752,21 +744,27 @@
             db.collection('users').doc(userId).get()
                 .then((doc) => {
                     if (doc.exists) {
-                        userPointsValue = doc.data().points || 0;
+                        const data = doc.data();
+                        userPointsValue = Number(data.points) || 0; // Đảm bảo là số
                         userPoints.textContent = userPointsValue;
                         userPointsMain.textContent = userPointsValue;
                     } else {
+                        // Tạo mới user nếu chưa tồn tại
                         db.collection('users').doc(userId).set({
                             points: 0,
                             matches: 0,
                             wins: 0,
                             losses: 0,
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }).then(() => {
+                            userPointsValue = 0;
+                            userPoints.textContent = 0;
+                            userPointsMain.textContent = 0;
                         });
-                        userPointsValue = 0;
-                        userPoints.textContent = 0;
-                        userPointsMain.textContent = 0;
                     }
+                })
+                .catch(error => {
+                    console.error("Lỗi khi tải dữ liệu người dùng:", error);
                 });
         }
 
@@ -824,6 +822,10 @@
                     });
                     
                     document.getElementById('history-section').classList.remove('hidden');
+                })
+                .catch(error => {
+                    console.error("Lỗi khi tải lịch sử thi đấu:", error);
+                    historyBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-600">Lỗi khi tải dữ liệu</td></tr>';
                 });
         }
 
@@ -846,6 +848,8 @@
                     querySnapshot.forEach((doc, index) => {
                         const data = doc.data();
                         const displayName = data.displayName || doc.id.split('@')[0];
+                        const points = Number(data.points) || 0; // Đảm bảo là số
+                        const matches = Number(data.matches) || 0; // Đảm bảo là số
                         
                         let rankClass = 'rank-other';
                         if (index === 0) rankClass = 'rank-1';
@@ -862,11 +866,15 @@
                                 </div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">${displayName}</td>
-                            <td class="px-6 py-4 whitespace-nowrap font-bold">${data.points || 0}</td>
-                            <td class="px-6 py-4 whitespace-nowrap">${data.matches || 0}</td>
+                            <td class="px-6 py-4 whitespace-nowrap font-bold">${points}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${matches}</td>
                         `;
                         leaderboardBody.appendChild(row);
                     });
+                })
+                .catch(error => {
+                    console.error("Lỗi khi tải bảng xếp hạng:", error);
+                    leaderboardBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-600">Lỗi khi tải dữ liệu</td></tr>';
                 });
         }
 
@@ -1345,8 +1353,8 @@
             const matchData = matchDoc.data();
             
             if (Object.keys(matchData.results).length === 2) {
-                const player1 = matchData.players[0];
-                const player2 = matchData.players[1];
+                const player1 = currentMatch.players[0];
+                const player2 = currentMatch.players[1];
                 
                 const score1 = matchData.results[player1].score;
                 const score2 = matchData.results[player2].score;
@@ -1369,31 +1377,62 @@
             const player1 = currentMatch.players[0];
             const player2 = currentMatch.players[1];
             
-            const batch = db.batch();
-            
-            const player1Ref = db.collection('users').doc(player1);
-            batch.update(player1Ref, {
-                matches: firebase.firestore.FieldValue.increment(1),
-                points: firebase.firestore.FieldValue.increment(winner === player1 ? 10 : (winner === 'draw' ? 0 : -5)),
-                wins: firebase.firestore.FieldValue.increment(winner === player1 ? 1 : 0),
-                losses: firebase.firestore.FieldValue.increment(winner === player2 ? 1 : 0)
-            });
-            
-            const player2Ref = db.collection('users').doc(player2);
-            batch.update(player2Ref, {
-                matches: firebase.firestore.FieldValue.increment(1),
-                points: firebase.firestore.FieldValue.increment(winner === player2 ? 10 : (winner === 'draw' ? 0 : -5)),
-                wins: firebase.firestore.FieldValue.increment(winner === player2 ? 1 : 0),
-                losses: firebase.firestore.FieldValue.increment(winner === player1 ? 1 : 0)
-            });
-            
-            await batch.commit();
-            
-            if (currentUser) {
-                loadUserData(currentUser.uid);
+            try {
+                // Lấy dữ liệu hiện tại của cả hai người chơi
+                const player1Doc = await db.collection('users').doc(player1).get();
+                const player2Doc = await db.collection('users').doc(player2).get();
+                
+                const player1Data = player1Doc.data();
+                const player2Data = player2Doc.data();
+                
+                // Tính toán điểm mới
+                const player1Points = Number(player1Data.points) || 0;
+                const player2Points = Number(player2Data.points) || 0;
+                
+                const player1Change = winner === player1 ? 10 : (winner === 'draw' ? 0 : -5);
+                const player2Change = winner === player2 ? 10 : (winner === 'draw' ? 0 : -5);
+                
+                const newPlayer1Points = player1Points + player1Change;
+                const newPlayer2Points = player2Points + player2Change;
+                
+                // Cập nhật dữ liệu
+                const batch = db.batch();
+                const player1Ref = db.collection('users').doc(player1);
+                const player2Ref = db.collection('users').doc(player2);
+                
+                batch.update(player1Ref, {
+                    points: newPlayer1Points,
+                    matches: firebase.firestore.FieldValue.increment(1),
+                    wins: firebase.firestore.FieldValue.increment(winner === player1 ? 1 : 0),
+                    losses: firebase.firestore.FieldValue.increment(winner === player2 ? 1 : 0)
+                });
+                
+                batch.update(player2Ref, {
+                    points: newPlayer2Points,
+                    matches: firebase.firestore.FieldValue.increment(1),
+                    wins: firebase.firestore.FieldValue.increment(winner === player2 ? 1 : 0),
+                    losses: firebase.firestore.FieldValue.increment(winner === player1 ? 1 : 0)
+                });
+                
+                await batch.commit();
+                
+                // Cập nhật ngay lập tức trên giao diện nếu là người chơi hiện tại
+                if (currentUser) {
+                    if (currentUser.uid === player1) {
+                        userPointsValue = newPlayer1Points;
+                    } else if (currentUser.uid === player2) {
+                        userPointsValue = newPlayer2Points;
+                    }
+                    userPoints.textContent = userPointsValue;
+                    userPointsMain.textContent = userPointsValue;
+                }
+                
+                // Load lại bảng xếp hạng
+                loadLeaderboard();
+                
+            } catch (error) {
+                console.error("Lỗi khi cập nhật điểm:", error);
             }
-            
-            loadLeaderboard();
         }
 
         function displayMatchResult(matchData) {
@@ -1460,6 +1499,11 @@
             document.getElementById('result-icon').innerHTML = resultIcon;
             
             displayExamFeedback(playerResult.evaluation);
+            
+            // Load lại dữ liệu người dùng để cập nhật điểm
+            if (currentUser) {
+                loadUserData(currentUser.uid);
+            }
         }
 
         function displayExamFeedback(result) {
@@ -1503,7 +1547,7 @@
                     if (doc.exists) {
                         const opponentData = doc.data();
                         const opponentName = opponentData.displayName || opponentId.split('@')[0];
-                        const opponentPoints = opponentData.points || 0;
+                        const opponentPoints = Number(opponentData.points) || 0;
                         
                         document.getElementById('opponent-name').textContent = opponentName;
                         document.getElementById('opponent-points').textContent = opponentPoints;
@@ -1515,6 +1559,9 @@
                         document.getElementById('player-result-name').textContent = currentUser.email.split('@')[0];
                         document.getElementById('opponent-result-name').textContent = opponentName;
                     }
+                })
+                .catch(error => {
+                    console.error("Lỗi khi tải thông tin đối thủ:", error);
                 });
         }
 
