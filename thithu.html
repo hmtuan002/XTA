@@ -313,12 +313,48 @@
             color: var(--gray);
         }
         
+        .streak-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .streak-box {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .streak-icon {
+            margin-right: 0.5rem;
+            color: #d32f2f;
+        }
+        
+        .streak-count {
+            font-weight: 700;
+            color: #d32f2f;
+            margin-right: 0.25rem;
+        }
+        
+        .streak-text {
+            font-weight: 500;
+            color: #d32f2f;
+        }
+        
         @media (max-width: 768px) {
             .floating-action-btn {
                 bottom: 1rem;
                 right: 1rem;
                 width: 50px;
                 height: 50px;
+            }
+            
+            .streak-box {
+                padding: 0.5rem 1rem;
+                font-size: 0.875rem;
             }
         }
     </style>
@@ -359,6 +395,15 @@
                 </div>
                 <h2 class="text-2xl md:text-3xl font-bold mb-4 text-gray-800">Chào mừng đến với bài thi thử môn Ngữ Văn</h2>
                 <p class="text-gray-600 mb-8">Ôn luyện với đề thi mô phỏng chính thức kỳ thi THPT Quốc Gia</p>
+                
+                <!-- Chuỗi lửa (streak) -->
+                <div class="streak-container">
+                    <div id="streak-display" class="streak-box hidden">
+                        <i class="fas fa-fire streak-icon"></i>
+                        <span id="streak-count" class="streak-count">0</span>
+                        <span class="streak-text">ngày thi liên tiếp</span>
+                    </div>
+                </div>
                 
                 <div class="grid md:grid-cols-2 gap-6 mb-8">
                     <div class="bg-blue-50 p-6 rounded-lg border border-blue-100">
@@ -687,6 +732,8 @@
         const logoutBtn = document.getElementById('logout-btn');
         const userInfo = document.getElementById('user-info');
         const userName = document.getElementById('user-name');
+        const streakDisplay = document.getElementById('streak-display');
+        const streakCount = document.getElementById('streak-count');
         
         // Biến toàn cục
         let examData = null;
@@ -695,6 +742,7 @@
         let userAnswers = {};
         let progressChart = null;
         let resultProgressChart = null;
+        let currentStreak = 0;
         
         // Xử lý đăng nhập/đăng xuất
         loginBtn.addEventListener('click', () => {
@@ -715,15 +763,124 @@
                 loginBtn.classList.add('hidden');
                 userName.textContent = user.email;
                 
-                // Load lịch sử thi
+                // Load lịch sử thi và chuỗi lửa
                 loadExamHistory(user.uid);
+                loadStreak(user.uid);
             } else {
                 // Chưa đăng nhập
                 userInfo.classList.add('hidden');
                 loginBtn.classList.remove('hidden');
+                streakDisplay.classList.add('hidden');
             }
         });
 
+        // Hàm load chuỗi lửa
+        function loadStreak(userId) {
+            db.collection('user_streaks').doc(userId).get()
+                .then((doc) => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        currentStreak = data.currentStreak || 0;
+                        const lastExamDate = data.lastExamDate ? data.lastExamDate.toDate() : null;
+                        
+                        // Kiểm tra nếu lần thi cuối cùng là hôm qua thì giữ nguyên streak
+                        // Nếu cách đây hơn 1 ngày thì reset streak
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        
+                        if (lastExamDate) {
+                            const lastDate = new Date(lastExamDate);
+                            lastDate.setHours(0, 0, 0, 0);
+                            
+                            const diffTime = today - lastDate;
+                            const diffDays = diffTime / (1000 * 60 * 60 * 24);
+                            
+                            if (diffDays > 1) {
+                                // Đã quá 1 ngày kể từ lần thi cuối, reset streak
+                                currentStreak = 0;
+                                updateStreakInFirestore(userId, 0);
+                            }
+                        }
+                        
+                        updateStreakDisplay();
+                    } else {
+                        // Chưa có dữ liệu streak
+                        currentStreak = 0;
+                        updateStreakDisplay();
+                    }
+                })
+                .catch((error) => {
+                    console.error("Lỗi khi tải chuỗi lửa:", error);
+                    currentStreak = 0;
+                    updateStreakDisplay();
+                });
+        }
+
+        // Cập nhật hiển thị chuỗi lửa
+        function updateStreakDisplay() {
+            if (currentStreak > 0) {
+                streakCount.textContent = currentStreak;
+                streakDisplay.classList.remove('hidden');
+            } else {
+                streakDisplay.classList.add('hidden');
+            }
+        }
+
+        // Cập nhật chuỗi lửa trong Firestore
+        function updateStreakInFirestore(userId, newStreak) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            db.collection('user_streaks').doc(userId).set({
+                currentStreak: newStreak,
+                lastExamDate: today,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true })
+            .catch((error) => {
+                console.error("Lỗi khi cập nhật chuỗi lửa:", error);
+            });
+        }
+
+        // Tăng chuỗi lửa khi hoàn thành bài thi
+        function incrementStreak(userId) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            db.collection('user_streaks').doc(userId).get()
+                .then((doc) => {
+                    let newStreak = 1;
+                    
+                    if (doc.exists) {
+                        const data = doc.data();
+                        const lastExamDate = data.lastExamDate ? data.lastExamDate.toDate() : null;
+                        
+                        if (lastExamDate) {
+                            const lastDate = new Date(lastExamDate);
+                            lastDate.setHours(0, 0, 0, 0);
+                            
+                            const diffTime = today - lastDate;
+                            const diffDays = diffTime / (1000 * 60 * 60 * 24);
+                            
+                            if (diffDays === 1) {
+                                // Thi liên tiếp ngày hôm sau
+                                newStreak = (data.currentStreak || 0) + 1;
+                            } else if (diffDays === 0) {
+                                // Đã thi hôm nay rồi, không tăng streak
+                                newStreak = data.currentStreak || 0;
+                            }
+                            // Nếu diffDays > 1 thì giữ newStreak = 1 (đã reset)
+                        }
+                    }
+                    
+                    currentStreak = newStreak;
+                    updateStreakDisplay();
+                    updateStreakInFirestore(userId, newStreak);
+                })
+                .catch((error) => {
+                    console.error("Lỗi khi tăng chuỗi lửa:", error);
+                });
+        }
+        
         // Hàm load lịch sử thi
         function loadExamHistory(userId) {
             const historyBody = document.getElementById('history-body');
@@ -1043,6 +1200,7 @@
                 const user = auth.currentUser;
                 if (user) {
                     loadExamHistory(user.uid);
+                    incrementStreak(user.uid); // Tăng chuỗi lửa khi hoàn thành bài thi
                 }
             } catch (error) {
                 console.error("Lỗi khi chấm bài:", error);
